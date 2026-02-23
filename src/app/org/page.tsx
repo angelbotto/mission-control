@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
 import {
   ReactFlow,
   Node,
@@ -44,13 +43,11 @@ const STATUS_COLORS: Record<string, string> = {
 function AgentNode({ data }: NodeProps) {
   const d = data as unknown as AgentInfo & { onCreateSub?: (key: string) => void };
   const borderColor = STATUS_COLORS[d.status] || "#333";
-  const router = useRouter();
 
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
       <div
-        onClick={() => router.push("/editor?agent=" + d.key)}
         style={{
           background: "#111",
           border: `2px solid ${borderColor}`,

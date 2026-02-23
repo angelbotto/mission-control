@@ -47,14 +47,20 @@ export default function KanbanPage() {
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch("/api/mc-tasks");
       if (res.ok) setTasks(await res.json());
     } catch { /* ignore */ }
   }, []);
+
+  // Auto-sync GSD in background
+  useEffect(() => {
+    const syncGSD = () => fetch("/api/gsd-sync", { method: "POST" }).then(() => fetchTasks()).catch(() => {});
+    syncGSD(); // sync on load
+    const gsdInterval = setInterval(syncGSD, 5 * 60 * 1000); // every 5 min
+    return () => clearInterval(gsdInterval);
+  }, [fetchTasks]);
 
   useEffect(() => {
     fetchTasks();
@@ -84,16 +90,6 @@ export default function KanbanPage() {
     await fetch(`/api/mc-tasks/${id}/assign`, { method: "POST" });
   };
 
-  const syncGSD = async () => {
-    setSyncing(true);
-    try {
-      await fetch("/api/gsd-sync", { method: "POST" });
-      await fetchTasks();
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   return (
     <Shell>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
@@ -101,9 +97,6 @@ export default function KanbanPage() {
           Task Board
         </h2>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={syncGSD} disabled={syncing} style={{ background: "#1a1a2a", color: "#7c8aff", border: "1px solid #2a2a3a", borderRadius: 6, padding: "7px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", opacity: syncing ? 0.5 : 1 }}>
-            {syncing ? "⏳" : "🔄"} Sync GSD
-          </button>
           <button onClick={() => setShowModal(true)} style={{ background: "#00c691", color: "#0a0a0a", border: "none", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
             + Nueva Tarea
           </button>
@@ -178,7 +171,9 @@ function TaskCard({ task, color, columnKey, onClick, onAssign }: { task: Task; c
           </button>
         )}
       </div>
-      {task.source !== "kanban" && (
+      {task.source === "gsd" ? (
+        <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, color: "#7c8aff", background: "#1a1a2a", padding: "1px 6px", borderRadius: 3, border: "1px solid #2a2a3a" }}>📋 GSD</span>
+      ) : task.source !== "kanban" && (
         <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, color: "#444", background: "#1a1a1a", padding: "1px 4px", borderRadius: 3 }}>{task.source}</span>
       )}
     </div>
