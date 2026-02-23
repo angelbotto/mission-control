@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // output: "standalone", // solo para Docker/NAS — quitar para desarrollo local
   env: {
     AGENTS_DIR: process.env.AGENTS_DIR || "/Users/angelbotto/.openclaw/agents",
     GATEWAY_URL: process.env.GATEWAY_URL || "http://localhost:18789",
