@@ -128,7 +128,8 @@ const DEFAULT_AGENTS = [
 ];
 
 // Debounce helper
-function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): (...args: Parameters<T>) => void {
   let t: ReturnType<typeof setTimeout>;
   return (...args: Parameters<T>) => {
     clearTimeout(t);
@@ -146,7 +147,8 @@ function OrgChartInner({
   onFetchAgents: () => void;
 }) {
   const { fitView } = useReactFlow();
-  const saveRef = useRef<((nodes: Node[], edges: Edge[]) => void) | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const saveRef = useRef<((...args: any[]) => void) | null>(null);
   const savedLayout = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null);
   const layoutLoaded = useRef(false);
 
@@ -231,7 +233,7 @@ function OrgChartInner({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nodes: updatedNodes, edges: updatedEdges }),
       }).catch(console.error);
-    }, 600) as (n: Node[], e: Edge[]) => void,
+    }, 600),
     []
   );
 
