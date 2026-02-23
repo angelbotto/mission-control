@@ -1,32 +1,24 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Shell from "@/components/Shell";
 
-// Dynamic import — CodeMirror no puede correr en SSR
 const CodeEditor = dynamic(() => import("@/components/CodeEditor"), { ssr: false });
 
-interface FileEntry {
+interface AgentItem {
   agent: string;
-  agentLabel: string;
+  label: string;
   emoji: string;
-  files: string[];
 }
-
-const AGENTS_FILES = [
-  { agent: "main", label: "K", emoji: "👽" },
-  { agent: "assistant", label: "Vera", emoji: "⚡" },
-  { agent: "infra", label: "Nexo", emoji: "🖥️" },
-  { agent: "content", label: "Pluma", emoji: "✒️" },
-  { agent: "coder", label: "Arq", emoji: "🏗️" },
-  { agent: "research", label: "Oráculo", emoji: "🔬" },
-  { agent: "finance", label: "Vault", emoji: "💰" },
-];
 
 const MD_FILES = ["SOUL.md", "USER.md", "HEARTBEAT.md", "TOOLS.md", "AGENTS.md"];
 
-export default function EditorPage() {
+function EditorContent() {
+  const searchParams = useSearchParams();
+
+  const [agentsList, setAgentsList] = useState<AgentItem[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [content, setContent] = useState("");
@@ -35,6 +27,7 @@ export default function EditorPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const initialLoadDone = useRef(false);
 
   const isModified = content !== originalContent;
 
@@ -49,7 +42,6 @@ export default function EditorPage() {
         setOriginalContent(data.content || "");
         setSelectedAgent(agent);
         setSelectedFile(path);
-        // En móvil, cierra el sidebar al seleccionar archivo
         if (window.innerWidth < 768) setSidebarOpen(false);
       } else {
         const data = await res.json();
@@ -89,6 +81,39 @@ export default function EditorPage() {
     }
   }, [selectedAgent, selectedFile, content]);
 
+  // Fetch agents list and handle ?agent= query param
+  useEffect(() => {
+    async function init() {
+      try {
+        const res = await fetch("/api/agents");
+        if (!res.ok) return;
+        const data: { key: string; dirName: string; emoji: string }[] = await res.json();
+        const mapped = data.map((a) => ({
+          agent: a.dirName,
+          label: a.key,
+          emoji: a.emoji,
+        }));
+        setAgentsList(mapped);
+
+        if (!initialLoadDone.current) {
+          initialLoadDone.current = true;
+          const agentParam = searchParams.get("agent");
+          if (agentParam) {
+            const match = mapped.find(
+              (a) => a.agent === agentParam || a.label.toLowerCase() === agentParam.toLowerCase()
+            );
+            if (match) {
+              loadFile(match.agent, "SOUL.md");
+            }
+          }
+        }
+      } catch {
+        // fetch failed silently
+      }
+    }
+    init();
+  }, [searchParams, loadFile]);
+
   // Keyboard shortcut Cmd/Ctrl+S
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -121,7 +146,7 @@ export default function EditorPage() {
         </button>
         {selectedFile && (
           <span style={{ fontSize: "12px", color: "#666" }}>
-            {AGENTS_FILES.find((a) => a.agent === selectedAgent)?.emoji} {selectedFile}
+            {agentsList.find((a) => a.agent === selectedAgent)?.emoji} {selectedFile}
             {isModified && <span style={{ color: "#f59e0b", marginLeft: "6px" }}>●</span>}
           </span>
         )}
@@ -153,7 +178,7 @@ export default function EditorPage() {
           <h3 style={{ fontSize: "11px", fontWeight: 600, color: "#555", textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 12px 0" }}>
             Archivos de Agentes
           </h3>
-          {AGENTS_FILES.map((a) => (
+          {agentsList.map((a) => (
             <div key={a.agent} style={{ marginBottom: "12px" }}>
               <div style={{ fontSize: "12px", fontWeight: 600, color: "#888", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
                 <span>{a.emoji}</span> {a.label}
@@ -189,9 +214,9 @@ export default function EditorPage() {
             <span style={{ fontSize: "13px", color: "#888", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {selectedAgent && selectedFile ? (
                 <>
-                  <span style={{ color: "#555" }}>{AGENTS_FILES.find((a) => a.agent === selectedAgent)?.emoji}</span>
+                  <span style={{ color: "#555" }}>{agentsList.find((a) => a.agent === selectedAgent)?.emoji}</span>
                   {" "}
-                  <span style={{ color: "#666" }}>{AGENTS_FILES.find((a) => a.agent === selectedAgent)?.label}</span>
+                  <span style={{ color: "#666" }}>{agentsList.find((a) => a.agent === selectedAgent)?.label}</span>
                   {" / "}
                   <span style={{ color: "#ccc" }}>{selectedFile}</span>
                   {isModified && <span style={{ color: "#f59e0b", marginLeft: "8px" }}>● modificado</span>}
@@ -243,5 +268,13 @@ export default function EditorPage() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+export default function EditorPage() {
+  return (
+    <Suspense fallback={<Shell><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "calc(100vh - 130px)", color: "#555" }}>Cargando editor…</div></Shell>}>
+      <EditorContent />
+    </Suspense>
   );
 }

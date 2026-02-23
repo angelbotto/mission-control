@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   ReactFlow,
   Node,
@@ -20,16 +21,17 @@ import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import Shell from "@/components/Shell";
 import AgentCreatorModal from "@/components/AgentCreatorModal";
-import { formatRelativeTime } from "@/lib/agents";
 
 interface AgentInfo {
   key: string;
+  dirName?: string;
   emoji: string;
   role: string;
   model: string;
   status: string;
   lastActivity: string | null;
   totalTokens: number;
+  avatarUrl?: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -41,13 +43,13 @@ const STATUS_COLORS: Record<string, string> = {
 function AgentNode({ data }: NodeProps) {
   const d = data as unknown as AgentInfo & { onCreateSub?: (key: string) => void };
   const borderColor = STATUS_COLORS[d.status] || "#333";
-  const [showDetails, setShowDetails] = useState(false);
+  const router = useRouter();
 
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
       <div
-        onClick={() => setShowDetails(!showDetails)}
+        onClick={() => router.push("/editor?agent=" + d.key)}
         style={{
           background: "#111",
           border: `2px solid ${borderColor}`,
@@ -59,7 +61,11 @@ function AgentNode({ data }: NodeProps) {
           position: "relative",
         }}
       >
-        <div style={{ fontSize: "32px", marginBottom: "4px" }}>{d.emoji}</div>
+        {d.avatarUrl ? (
+          <img src={d.avatarUrl} alt={d.key} style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", marginBottom: 4 }} />
+        ) : (
+          <div style={{ fontSize: "32px", marginBottom: "4px" }}>{d.emoji}</div>
+        )}
         <div style={{ fontSize: "14px", fontWeight: 600, color: "#ededed" }}>{d.key}</div>
         <div style={{ fontSize: "10px", color: "#666", marginTop: "2px" }}>{d.role}</div>
         <div
@@ -74,23 +80,6 @@ function AgentNode({ data }: NodeProps) {
             animation: d.status === "online" ? "pulse-online 2s ease-in-out infinite" : "none",
           }}
         />
-
-        {showDetails && (
-          <div
-            style={{
-              marginTop: "10px",
-              padding: "8px 0 0",
-              borderTop: "1px solid #222",
-              fontSize: "10px",
-              color: "#888",
-              textAlign: "left",
-            }}
-          >
-            <div>Modelo: {d.model?.replace("claude-", "")}</div>
-            <div>Tokens: {d.totalTokens > 0 ? `${(d.totalTokens / 1000).toFixed(1)}K` : "—"}</div>
-            <div>Actividad: {formatRelativeTime(d.lastActivity)}</div>
-          </div>
-        )}
       </div>
       <Handle type="source" position={Position.Bottom} style={{ visibility: "hidden" }} />
     </>
@@ -117,15 +106,7 @@ function layoutGraph(nodes: Node[], edges: Edge[]): { nodes: Node[]; edges: Edge
   return { nodes: laidOut, edges };
 }
 
-const DEFAULT_AGENTS = [
-  { key: "K", emoji: "👽", role: "Orquestador", dirName: "main" },
-  { key: "Vera", emoji: "⚡", role: "Asistente", dirName: "assistant" },
-  { key: "Nexo", emoji: "🖥️", role: "Infraestructura", dirName: "infra" },
-  { key: "Pluma", emoji: "✒️", role: "Contenido", dirName: "content" },
-  { key: "Arq", emoji: "🏗️", role: "Código", dirName: "coder" },
-  { key: "Oráculo", emoji: "🔬", role: "Research", dirName: "research" },
-  { key: "Vault", emoji: "💰", role: "Finanzas", dirName: "finance" },
-];
+// Agents are now loaded dynamically from /api/agents — no hardcoded list.
 
 // Debounce helper
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,26 +147,29 @@ function OrgChartInner({
   }, []);
 
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
-    const agentMap = new Map(agentsData.map((a) => [a.key, a]));
+    if (agentsData.length === 0) return { nodes: [], edges: [] };
 
-    const rawNodes: Node[] = DEFAULT_AGENTS.map((a) => ({
+    // Find root agent (dirName === "main" or key === "K")
+    const rootAgent =
+      agentsData.find((a) => a.dirName === "main" || a.key === "K") ||
+      agentsData[0];
+
+    const rawNodes: Node[] = agentsData.map((a) => ({
       id: a.key,
       type: "agent",
       position: { x: 0, y: 0 },
-      data: {
-        ...a,
-        ...(agentMap.get(a.key) || {}),
-        key: a.key,
-      },
+      data: { ...a },
     }));
 
-    const rawEdges: Edge[] = DEFAULT_AGENTS.filter((a) => a.key !== "K").map((a) => ({
-      id: `K-${a.key}`,
-      source: "K",
-      target: a.key,
-      style: { stroke: "#333", strokeWidth: 1.5 },
-      animated: agentMap.get(a.key)?.status === "online",
-    }));
+    const rawEdges: Edge[] = agentsData
+      .filter((a) => a.key !== rootAgent.key)
+      .map((a) => ({
+        id: `${rootAgent.key}-${a.key}`,
+        source: rootAgent.key,
+        target: a.key,
+        style: { stroke: "#333", strokeWidth: 1.5 },
+        animated: a.status === "online",
+      }));
 
     return layoutGraph(rawNodes, rawEdges);
   }, [agentsData]);

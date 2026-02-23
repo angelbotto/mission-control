@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const SOUL_TEMPLATE = `# SOUL.md — {name}
 
@@ -35,6 +35,14 @@ export default function AgentCreatorModal({ onClose, onCreated }: Props) {
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [agents, setAgents] = useState<{ key: string; emoji: string; role: string; status: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/agents")
+      .then((res) => res.json())
+      .then((data) => setAgents(data))
+      .catch(() => {});
+  }, []);
 
   const soulContent = form.soul || SOUL_TEMPLATE.replace(/\{name\}/g, form.name || "Agent").replace(/\{role\}/g, form.role || "General");
 
@@ -174,9 +182,9 @@ export default function AgentCreatorModal({ onClose, onCreated }: Props) {
                 onChange={(e) => setForm({ ...form, manager: e.target.value })}
                 style={inputStyle}
               >
-                <option value="K">K (👽)</option>
-                <option value="Vera">Vera (⚡)</option>
-                <option value="Arq">Arq (🏗️)</option>
+                {agents.map((a) => (
+                  <option key={a.key} value={a.key}>{a.emoji} {a.key}</option>
+                ))}
               </select>
             </div>
           </div>

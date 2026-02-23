@@ -50,10 +50,17 @@ export const AGENTS: AgentDef[] = [
     role: "Investigación",
   },
   {
+    key: "Iris",
+    emoji: "🎨",
+    dirName: "design",
+    defaultModel: "claude-sonnet-4-6",
+    role: "Diseño Visual",
+  },
+  {
     key: "Vault",
     emoji: "🏦",
     dirName: "finance",
-    defaultModel: "claude-opus-4-6",
+    defaultModel: "claude-sonnet-4-6",
     role: "Finanzas",
   },
 ];

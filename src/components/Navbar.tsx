@@ -8,7 +8,7 @@ const TABS = [
   { href: "/activity", label: "Activity", icon: "📡" },
   { href: "/kanban", label: "Kanban", icon: "📋" },
   { href: "/org", label: "Org Chart", icon: "🌳" },
-  { href: "/editor", label: "Editor", icon: "📝" },
+  { href: "/office", label: "Oficina", icon: "🏢" },
 ];
 
 export default function Navbar() {
