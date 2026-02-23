@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { exec } from "child_process";
 import { loadTasks, saveTasks } from "../../route";
+
+function triggerDispatcher(task: { id: string; title: string; agentId?: string; agentKey?: string }) {
+  const agent = task.agentKey || task.agentId || "K";
+  const text = `📋 Tarea en Working: "${task.title}" (asignada a ${agent}, id: ${task.id}). Ejecuta inmediatamente.`;
+  exec(`openclaw system event --text ${JSON.stringify(text)} --mode now`, (err) => {
+    if (err) console.error("[mc-move] trigger error:", err.message);
+  });
+}
 
 export async function POST(
   req: NextRequest,
@@ -19,6 +28,11 @@ export async function POST(
   task.column = column;
   task.updatedAt = new Date().toISOString();
   await saveTasks(store);
+
+  // Trigger inmediato: cuando una tarea pasa a "working", despertar a K al instante
+  if (column === "working") {
+    triggerDispatcher(task);
+  }
 
   return NextResponse.json(task);
 }
