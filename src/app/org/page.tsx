@@ -21,6 +21,7 @@ import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import Shell from "@/components/Shell";
 import AgentCreatorModal from "@/components/AgentCreatorModal";
+import AgentDrawer from "@/components/AgentDrawer";
 
 interface AgentInfo {
   key: string;
@@ -122,10 +123,12 @@ function OrgChartInner({
   agentsData,
   onShowCreator,
   onFetchAgents,
+  onNodeClick,
 }: {
   agentsData: AgentInfo[];
   onShowCreator: () => void;
   onFetchAgents: () => void;
+  onNodeClick?: (agent: AgentInfo) => void;
 }) {
   const { fitView } = useReactFlow();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -242,6 +245,10 @@ function OrgChartInner({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeDragStop={onNodeDragStop}
+        onNodeClick={(_: React.MouseEvent, node: Node) => {
+          const agent = agentsData.find((a) => a.key === node.id);
+          if (agent && onNodeClick) onNodeClick(agent);
+        }}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.15 }}
@@ -290,6 +297,7 @@ function OrgChartInner({
 export default function OrgChartPage() {
   const [agentsData, setAgentsData] = useState<AgentInfo[]>([]);
   const [showCreator, setShowCreator] = useState(false);
+  const [drawerAgent, setDrawerAgent] = useState<AgentInfo | null>(null);
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -311,6 +319,7 @@ export default function OrgChartPage() {
           agentsData={agentsData}
           onShowCreator={() => setShowCreator(true)}
           onFetchAgents={fetchAgents}
+          onNodeClick={(agent) => setDrawerAgent(agent)}
         />
       </ReactFlowProvider>
 
@@ -323,6 +332,8 @@ export default function OrgChartPage() {
           }}
         />
       )}
+
+      <AgentDrawer agent={drawerAgent} onClose={() => setDrawerAgent(null)} />
     </Shell>
   );
 }

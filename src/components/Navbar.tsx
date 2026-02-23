@@ -7,6 +7,7 @@ const TABS = [
   { href: "/", label: "Team Status", icon: "📊" },
   { href: "/activity", label: "Activity", icon: "📡" },
   { href: "/kanban", label: "Kanban", icon: "📋" },
+  { href: "/chat", label: "Chat", icon: "💬" },
   { href: "/org", label: "Org Chart", icon: "🌳" },
   { href: "/office", label: "Oficina", icon: "🏢" },
 ];

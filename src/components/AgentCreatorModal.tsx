@@ -2,20 +2,20 @@
 
 import { useState, useEffect } from "react";
 
-const SOUL_TEMPLATE = `# SOUL.md — {name}
+const ROLE_OPTIONS = [
+  { value: "infra", label: "Infraestructura", emoji: "🖥️", model: "claude-sonnet-4-6" },
+  { value: "coder", label: "Código", emoji: "🏗️", model: "claude-opus-4-6" },
+  { value: "content", label: "Contenido", emoji: "✒️", model: "claude-opus-4-6" },
+  { value: "research", label: "Investigación", emoji: "🔬", model: "claude-opus-4-6" },
+  { value: "finance", label: "Finanzas", emoji: "💰", model: "claude-sonnet-4-6" },
+  { value: "design", label: "Diseño", emoji: "🎨", model: "claude-sonnet-4-6" },
+  { value: "assistant", label: "Asistente", emoji: "⚡", model: "claude-sonnet-4-6" },
+  { value: "other", label: "Otro", emoji: "🤖", model: "claude-sonnet-4-6" },
+];
 
-## Identidad
-Soy {name}, agente del universo Bottico.
-
-## Rol
-{role}
-
-## Principios
-1. Hacer bien mi trabajo específico
-2. Reportar a mi manager cuando termine
-3. Pedir ayuda si estoy bloqueado
-4. Documentar lo que hago
-`;
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+}
 
 interface Props {
   onClose: () => void;
@@ -23,38 +23,49 @@ interface Props {
 }
 
 export default function AgentCreatorModal({ onClose, onCreated }: Props) {
-  const [form, setForm] = useState({
-    id: "",
-    name: "",
-    emoji: "🤖",
-    role: "",
-    model: "claude-sonnet-4-6",
-    botToken: "",
-    manager: "K",
-    soul: "",
-  });
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("other");
+  const [description, setDescription] = useState("");
+  const [botToken, setBotToken] = useState("");
+  const [soul, setSoul] = useState("");
+  const [generatingSoul, setGeneratingSoul] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [agents, setAgents] = useState<{ key: string; emoji: string; role: string; status: string }[]>([]);
 
+  const selectedRole = ROLE_OPTIONS.find((r) => r.value === role) || ROLE_OPTIONS[7];
+  const id = slugify(name);
+  const emoji = selectedRole.emoji;
+  const model = selectedRole.model;
+
+  const generateSoul = async () => {
+    if (!name.trim()) return;
+    setGeneratingSoul(true);
+    try {
+      const res = await fetch("/api/generate-soul", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, role: selectedRole.label, description }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSoul(data.soul);
+      }
+    } finally {
+      setGeneratingSoul(false);
+    }
+  };
+
+  // Auto-generate soul template when name changes
   useEffect(() => {
-    fetch("/api/agents")
-      .then((res) => res.json())
-      .then((data) => setAgents(data))
-      .catch(() => {});
-  }, []);
-
-  const soulContent = form.soul || SOUL_TEMPLATE.replace(/\{name\}/g, form.name || "Agent").replace(/\{role\}/g, form.role || "General");
+    if (!soul && name.trim()) {
+      setSoul(`# SOUL.md — ${name} ${emoji}\n\n## Esencia\nSoy ${name}, agente del universo Bottico.\n\n## Rol\n${selectedRole.label}: ${description || "pendiente"}\n\n## Reglas\n1. Hacer bien mi trabajo específico\n2. Reportar cuando termine\n3. Pedir ayuda si estoy bloqueado`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, role]);
 
   const handleSubmit = async () => {
-    if (!form.id || !form.name) {
-      setError("ID y nombre son requeridos");
-      return;
-    }
-    if (!/^[a-z0-9-]+$/.test(form.id)) {
-      setError("ID solo acepta letras minúsculas, números y guiones");
-      return;
-    }
+    if (!name.trim()) { setError("Nombre es requerido"); return; }
+    if (!id) { setError("No se pudo generar ID"); return; }
 
     setSaving(true);
     setError("");
@@ -63,15 +74,19 @@ export default function AgentCreatorModal({ onClose, onCreated }: Props) {
       const res = await fetch("/api/agents/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, soul: soulContent }),
+        body: JSON.stringify({
+          id,
+          name,
+          emoji,
+          role: selectedRole.label,
+          model,
+          botToken,
+          manager: "K",
+          soul: soul || `# ${name}\n\n${description}`,
+        }),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Error creating agent");
-        return;
-      }
-
+      if (!res.ok) { setError(data.error || "Error"); return; }
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -80,152 +95,61 @@ export default function AgentCreatorModal({ onClose, onCreated }: Props) {
     }
   };
 
-  const inputStyle = {
-    width: "100%",
-    background: "#0a0a0a",
-    border: "1px solid #222",
-    borderRadius: "6px",
-    padding: "8px 10px",
-    color: "#ccc",
-    fontSize: "13px",
-    fontFamily: "inherit",
-  };
-
-  const labelStyle = { fontSize: "11px", color: "#888", marginBottom: "4px", display: "block" as const };
+  const inputStyle: React.CSSProperties = { width: "100%", background: "#0a0a0a", border: "1px solid #222", borderRadius: 6, padding: "8px 10px", color: "#ccc", fontSize: 13, fontFamily: "inherit", outline: "none" };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.7)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 200,
-      }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        style={{
-          background: "#111",
-          border: "1px solid #1f1f1f",
-          borderRadius: "12px",
-          padding: "24px",
-          width: "500px",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-      >
-        <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#ededed", margin: "0 0 20px 0" }}>
-          + Crear Nuevo Agente
-        </h2>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#111", border: "1px solid #1f1f1f", borderRadius: 12, padding: 24, width: 500, maxHeight: "90vh", overflowY: "auto" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#ededed", margin: "0 0 20px 0" }}>+ Crear Nuevo Agente</h2>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            <div>
-              <label style={labelStyle}>Agent ID</label>
-              <input
-                placeholder="qa-bot"
-                value={form.id}
-                onChange={(e) => setForm({ ...form, id: e.target.value })}
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Nombre</label>
-              <input
-                placeholder="QA Bot"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                style={inputStyle}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "80px 1fr", gap: "12px" }}>
-            <div>
-              <label style={labelStyle}>Emoji</label>
-              <input
-                value={form.emoji}
-                onChange={(e) => setForm({ ...form, emoji: e.target.value })}
-                style={{ ...inputStyle, textAlign: "center", fontSize: "20px" }}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Rol / descripción</label>
-              <input
-                placeholder="Testing y QA"
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
-                style={inputStyle}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-            <div>
-              <label style={labelStyle}>Modelo</label>
-              <select
-                value={form.model}
-                onChange={(e) => setForm({ ...form, model: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="claude-sonnet-4-6">Claude Sonnet 4</option>
-                <option value="claude-opus-4-6">Claude Opus 4</option>
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Manager</label>
-              <select
-                value={form.manager}
-                onChange={(e) => setForm({ ...form, manager: e.target.value })}
-                style={inputStyle}
-              >
-                {agents.map((a) => (
-                  <option key={a.key} value={a.key}>{a.emoji} {a.key}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Name */}
           <div>
-            <label style={labelStyle}>Bot Token de Telegram (opcional)</label>
-            <input
-              type="password"
-              placeholder="123456:ABC..."
-              value={form.botToken}
-              onChange={(e) => setForm({ ...form, botToken: e.target.value })}
-              style={inputStyle}
-            />
+            <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Nombre del agente</label>
+            <input placeholder="Nexo Dev" value={name} onChange={(e) => setName(e.target.value)} style={inputStyle} autoFocus />
+            {id && <div style={{ fontSize: 10, color: "#444", marginTop: 4 }}>ID: <code>{id}</code> · {emoji} · {model.replace("claude-", "")}</div>}
           </div>
 
+          {/* Role dropdown */}
           <div>
-            <label style={labelStyle}>SOUL.md inicial</label>
-            <textarea
-              value={soulContent}
-              onChange={(e) => setForm({ ...form, soul: e.target.value })}
-              style={{ ...inputStyle, minHeight: "120px", resize: "vertical" }}
-            />
+            <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Rol</label>
+            <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
+              {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.emoji} {r.label}</option>)}
+            </select>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Descripción libre</label>
+            <textarea placeholder="Qué hace este agente, cuál es su expertise..." value={description} onChange={(e) => setDescription(e.target.value)} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+
+          {/* Bot Token */}
+          <div>
+            <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Bot Token de Telegram (opcional)</label>
+            <input type="password" placeholder="123456:ABC..." value={botToken} onChange={(e) => setBotToken(e.target.value)} style={inputStyle} />
+          </div>
+
+          {/* SOUL */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <label style={{ fontSize: 11, color: "#888" }}>SOUL.md</label>
+              <button onClick={generateSoul} disabled={generatingSoul || !name.trim()}
+                style={{ background: "none", border: "1px solid #2a2a3a", borderRadius: 4, padding: "2px 8px", color: generatingSoul ? "#555" : "#7c8aff", fontSize: 11, cursor: generatingSoul ? "default" : "pointer", fontFamily: "inherit" }}>
+                {generatingSoul ? "⏳ Generando..." : "✨ Generar SOUL con IA"}
+              </button>
+            </div>
+            <textarea value={soul} onChange={(e) => setSoul(e.target.value)} style={{ ...inputStyle, minHeight: 120, resize: "vertical", fontFamily: "var(--font-geist-mono)", fontSize: 11 }} />
           </div>
         </div>
 
-        {error && (
-          <div style={{ color: "#ef4444", fontSize: "12px", marginTop: "12px" }}>⚠️ {error}</div>
-        )}
+        {error && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 12 }}>⚠️ {error}</div>}
 
-        <div style={{ display: "flex", gap: "8px", marginTop: "20px", justifyContent: "flex-end" }}>
-          <button
-            onClick={onClose}
-            style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: "6px", padding: "8px 16px", color: "#888", fontSize: "13px", cursor: "pointer" }}
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: "6px", padding: "8px 16px", color: "#00c691", fontSize: "13px", cursor: "pointer", fontWeight: 600, opacity: saving ? 0.5 : 1 }}
-          >
+        <div style={{ display: "flex", gap: 8, marginTop: 20, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 16px", color: "#888", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+          <button onClick={handleSubmit} disabled={saving}
+            style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 6, padding: "8px 16px", color: "#00c691", fontSize: 13, cursor: "pointer", fontWeight: 600, opacity: saving ? 0.5 : 1 }}>
             {saving ? "Creando…" : "🚀 Crear Agente"}
           </button>
         </div>
