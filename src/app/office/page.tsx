@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import Shell from "@/components/Shell";
 import { formatRelativeTime } from "@/lib/agents";
 
-// Load PixiJS world client-side only
-const AgentWorld = dynamic(() => import("@/components/AgentWorld"), {
+// Load PixiJS tilemap world client-side only
+const OfficeWorld = dynamic(() => import("@/components/OfficeWorld"), {
   ssr: false,
   loading: () => (
     <div style={{
@@ -139,7 +139,7 @@ export default function OfficePage() {
           overflow: "hidden",
         }}
       >
-        <AgentWorld onAgentClick={handleAgentClick} />
+        <OfficeWorld onAgentClick={handleAgentClick} />
 
         {/* Agent info panel */}
         {selectedAgent && (
