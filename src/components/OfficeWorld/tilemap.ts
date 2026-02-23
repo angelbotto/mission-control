@@ -6,21 +6,15 @@ export const MAP_ROWS = 22;
 export const MAP_W = MAP_COLS * TILE;
 export const MAP_H = MAP_ROWS * TILE;
 
-// Tile IDs — Floor
-const _ = 0;  // void / wall fill
+// Tile IDs
+const _ = 0;  // void
 const G = 1;  // gray stone floor
 const B = 2;  // beige/tan floor
 const P = 3;  // parquet/dark brown floor
-const W = 4;  // wall top
+const W = 4;  // wall
 const L = 5;  // lavender/marble floor
 
-// Floor layer — 3 distinct rooms + corridors
-// Room 1 (top-left): CEO office — parquet (P) — cols 1-9, rows 1-8
-// Room 2 (top-right): Dev lab — gray stone (G) — cols 11-20, rows 1-8
-// Room 3 (bottom-left): Lounge — lavender (L) — cols 1-9, rows 12-20
-// Room 4 (bottom-right): Research/Finance — beige (B) — cols 11-20, rows 12-20
-// Corridor — gray (G) — rows 9-11, cols 0-21
-// Right wing — cols 22-29
+// Floor layer — 5 distinct areas + corridor
 export const FLOOR: number[][] = [
   [W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W],
   [W,P,P,P,P,P,P,P,P,W,G,G,G,G,G,G,G,G,G,G,W,G,G,G,G,G,G,G,G,W],
@@ -46,24 +40,31 @@ export const FLOOR: number[][] = [
   [W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W,W],
 ];
 
-// Tile colors for programmatic rendering (fallback when tileset fails)
+// Tile colors for programmatic rendering
 const TILE_COLORS: Record<number, number> = {
   [_]: 0x0d0d14,
   [G]: 0x3a3a4a,
   [B]: 0x8b7b5e,
   [P]: 0x5c3a1e,
-  [W]: 0x1e1e2e,
+  [W]: 0x1a1a2a,
   [L]: 0x4a4a6a,
 };
 
+// Tile patterns (checkerboard alternating shade for visual depth)
+const TILE_ALT_COLORS: Record<number, number> = {
+  [G]: 0x424252,
+  [B]: 0x938568,
+  [P]: 0x6b4428,
+  [L]: 0x525274,
+};
+
 // Room_Builder_Office_32x32.png tile positions (col, row in spritesheet)
-// Row 4-5: gray stone, Row 6-7: lighter, Row 8-9: brown, Row 10-11: beige
 const TILESET_COORDS: Record<number, { col: number; row: number }> = {
-  [G]: { col: 0, row: 4 },  // gray stone
-  [B]: { col: 3, row: 6 },  // beige
-  [P]: { col: 3, row: 8 },  // dark brown parquet
-  [W]: { col: 0, row: 0 },  // wall
-  [L]: { col: 0, row: 10 }, // lavender
+  [G]: { col: 0, row: 4 },
+  [B]: { col: 3, row: 6 },
+  [P]: { col: 3, row: 8 },
+  [W]: { col: 0, row: 0 },
+  [L]: { col: 0, row: 10 },
 };
 
 export interface TilemapResult {
@@ -90,6 +91,19 @@ export async function renderTilemap(PIXI: typeof import("pixi.js")): Promise<Til
 
       if (tileId === W) {
         wallTiles.add(`${col},${row}`);
+        // Wall: render with texture pattern
+        const wallG = new PIXI.Graphics()
+          .rect(px, py, TILE, TILE)
+          .fill({ color: 0x1a1a2a });
+        // Add subtle brick pattern
+        wallG.rect(px + 1, py + 1, TILE - 2, TILE / 2 - 1)
+          .fill({ color: 0x222238 });
+        wallG.rect(px + TILE / 2, py + TILE / 2 + 1, TILE / 2 - 1, TILE / 2 - 2)
+          .fill({ color: 0x222238 });
+        wallG.rect(px + 1, py + TILE / 2 + 1, TILE / 2 - 2, TILE / 2 - 2)
+          .fill({ color: 0x1e1e30 });
+        container.addChild(wallG);
+        continue;
       }
 
       if (roomSheet && TILESET_COORDS[tileId]) {
@@ -110,7 +124,11 @@ export async function renderTilemap(PIXI: typeof import("pixi.js")): Promise<Til
         sprite.texture.source.scaleMode = "nearest";
         container.addChild(sprite);
       } else {
-        const color = TILE_COLORS[tileId] ?? TILE_COLORS[_];
+        // Checkerboard pattern for floor distinction
+        const isAlt = (row + col) % 2 === 0;
+        const color = isAlt && TILE_ALT_COLORS[tileId]
+          ? TILE_ALT_COLORS[tileId]
+          : TILE_COLORS[tileId] ?? TILE_COLORS[_];
         const g = new PIXI.Graphics()
           .rect(px, py, TILE, TILE)
           .fill({ color });
@@ -119,20 +137,57 @@ export async function renderTilemap(PIXI: typeof import("pixi.js")): Promise<Til
     }
   }
 
-  // Draw wall borders (darker lines between rooms)
-  const borders = new PIXI.Graphics();
-  borders.setStrokeStyle({ width: 2, color: 0x0a0a16, alpha: 0.8 });
-  // Vertical walls
+  // Room divider lines along wall edges
+  const dividers = new PIXI.Graphics();
   for (let row = 0; row < MAP_ROWS; row++) {
-    for (let col = 0; col < MAP_COLS - 1; col++) {
-      const a = FLOOR[row][col];
-      const b = FLOOR[row][col + 1];
-      if ((a === W) !== (b === W) || (a !== b && a !== W && b !== W)) {
-        // skip
+    for (let col = 0; col < MAP_COLS; col++) {
+      const tile = FLOOR[row][col];
+      if (tile === W) continue;
+      const px = col * TILE;
+      const py = row * TILE;
+      // Check adjacent tiles for wall borders
+      if (col > 0 && FLOOR[row][col - 1] === W) {
+        dividers.rect(px, py, 2, TILE).fill({ color: 0x0a0a16, alpha: 0.6 });
+      }
+      if (col < MAP_COLS - 1 && FLOOR[row][col + 1] === W) {
+        dividers.rect(px + TILE - 2, py, 2, TILE).fill({ color: 0x0a0a16, alpha: 0.6 });
+      }
+      if (row > 0 && FLOOR[row - 1][col] === W) {
+        dividers.rect(px, py, TILE, 2).fill({ color: 0x0a0a16, alpha: 0.6 });
+      }
+      if (row < MAP_ROWS - 1 && FLOOR[row + 1][col] === W) {
+        dividers.rect(px, py + TILE - 2, TILE, 2).fill({ color: 0x0a0a16, alpha: 0.6 });
       }
     }
   }
-  container.addChild(borders);
+  container.addChild(dividers);
+
+  // Room labels
+  const rooms = [
+    { text: "Oficina CEO", x: 4.5, y: 1.2 },
+    { text: "Dev Lab", x: 14, y: 1.2 },
+    { text: "Ala Derecha", x: 24.5, y: 1.2 },
+    { text: "Corredor", x: 14, y: 9.2 },
+    { text: "Lounge", x: 4.5, y: 12.2 },
+    { text: "Investigación", x: 14, y: 12.2 },
+    { text: "Operaciones", x: 24.5, y: 12.2 },
+  ];
+  for (const r of rooms) {
+    const label = new PIXI.Text({
+      text: r.text,
+      style: {
+        fill: "#666688",
+        fontSize: 9,
+        fontFamily: "monospace",
+        fontWeight: "bold",
+        letterSpacing: 1,
+      },
+    });
+    label.x = r.x * TILE;
+    label.y = r.y * TILE;
+    label.alpha = 0.6;
+    container.addChild(label);
+  }
 
   return { container, wallTiles };
 }
@@ -148,7 +203,6 @@ export function renderFurniture(PIXI: typeof import("pixi.js")): Container {
       .fill({ color: color + 0x111111 });
     c.addChild(desk);
 
-    // Monitor
     const monitor = new PIXI.Graphics()
       .rect(x + 16, y - 6, 16, 12)
       .fill({ color: 0x222233 })
@@ -222,27 +276,38 @@ export function renderFurniture(PIXI: typeof import("pixi.js")): Container {
     c.addChild(couch);
   };
 
+  const drawCoffeeTable = (x: number, y: number) => {
+    const table = new PIXI.Graphics()
+      .roundRect(x, y, 32, 20, 3)
+      .fill({ color: 0x6b5b4a })
+      .circle(x + 10, y + 10, 4)
+      .fill({ color: 0x884422 })
+      .circle(x + 22, y + 10, 3)
+      .fill({ color: 0x446688 });
+    c.addChild(table);
+  };
+
   // === Room 1: CEO Office (parquet) — top-left ===
-  drawDesk(3 * TILE, 3 * TILE);          // K's big desk
+  drawDesk(3 * TILE, 3 * TILE);
   drawChair(4 * TILE, 5 * TILE, 0x663399);
   drawPlant(1 * TILE + 8, 1 * TILE + 8);
   drawBookshelf(7 * TILE, 2 * TILE);
   drawPlant(8 * TILE + 8, 7 * TILE);
 
-  // === Room 2: Dev Lab (gray) — top-right ===
-  drawDesk(12 * TILE, 3 * TILE);         // Arq
+  // === Room 2: Dev Lab (gray) — top-center ===
+  drawDesk(12 * TILE, 3 * TILE);
   drawChair(13 * TILE, 5 * TILE, 0xcc4444);
-  drawDesk(16 * TILE, 3 * TILE);         // Nexo
+  drawDesk(16 * TILE, 3 * TILE);
   drawChair(17 * TILE, 5 * TILE, 0x44aa88);
-  drawDesk(14 * TILE, 7 * TILE);         // Iris
+  drawDesk(14 * TILE, 7 * TILE);
   drawChair(15 * TILE, 6 * TILE - 8, 0xcc44aa);
   drawWhiteboard(11 * TILE, 1 * TILE + 8);
   drawPlant(19 * TILE, 1 * TILE + 8);
 
-  // === Right wing (gray) — top-right extra ===
-  drawDesk(23 * TILE, 3 * TILE);         // Alejo
+  // === Room 3: Right wing (gray) — top-right ===
+  drawDesk(23 * TILE, 3 * TILE);
   drawChair(24 * TILE, 5 * TILE, 0x8855cc);
-  drawDesk(26 * TILE, 3 * TILE);         // Stivens
+  drawDesk(26 * TILE, 3 * TILE);
   drawChair(27 * TILE, 5 * TILE, 0x22aa88);
   drawPlant(28 * TILE, 1 * TILE + 8);
 
@@ -251,27 +316,28 @@ export function renderFurniture(PIXI: typeof import("pixi.js")): Container {
   drawPlant(15 * TILE, 10 * TILE);
   drawPlant(25 * TILE, 10 * TILE);
 
-  // === Room 3: Lounge (lavender) — bottom-left ===
+  // === Room 4: Lounge (lavender) — bottom-left ===
   drawCouch(2 * TILE, 14 * TILE);
-  drawCouch(2 * TILE, 17 * TILE);
+  drawCoffeeTable(3 * TILE, 16 * TILE);
+  drawCouch(2 * TILE, 18 * TILE);
   drawPlant(1 * TILE + 8, 12 * TILE + 8);
   drawBookshelf(7 * TILE, 13 * TILE);
   drawPlant(8 * TILE, 19 * TILE);
 
-  // === Room 4: Research & Finance (beige) — bottom-center ===
-  drawDesk(12 * TILE, 14 * TILE);        // Oráculo
+  // === Room 5: Research & Finance (beige) — bottom-center ===
+  drawDesk(12 * TILE, 14 * TILE);
   drawChair(13 * TILE, 16 * TILE, 0x5555cc);
-  drawDesk(16 * TILE, 14 * TILE);        // Vault
+  drawDesk(16 * TILE, 14 * TILE);
   drawChair(17 * TILE, 16 * TILE, 0x44aa44);
-  drawDesk(14 * TILE, 18 * TILE);        // Pluma
+  drawDesk(14 * TILE, 18 * TILE);
   drawChair(15 * TILE, 17 * TILE - 4, 0xcc8844);
   drawWhiteboard(11 * TILE, 12 * TILE + 8);
   drawPlant(19 * TILE, 19 * TILE);
 
-  // === Room 5: Extra (beige) — bottom-right ===
-  drawDesk(23 * TILE, 14 * TILE);        // Vera
+  // === Room 6: Operations (beige) — bottom-right ===
+  drawDesk(23 * TILE, 14 * TILE);
   drawChair(24 * TILE, 16 * TILE, 0x0088cc);
-  drawDesk(26 * TILE, 14 * TILE);        // Alma
+  drawDesk(26 * TILE, 14 * TILE);
   drawChair(27 * TILE, 16 * TILE, 0x9966cc);
   drawPlant(22 * TILE, 19 * TILE);
   drawBookshelf(27 * TILE, 18 * TILE);
@@ -279,18 +345,18 @@ export function renderFurniture(PIXI: typeof import("pixi.js")): Container {
   return c;
 }
 
-// Agent desk positions in tile coordinates → pixel positions
+// Agent desk positions in pixel coordinates
 export const AGENT_DESK: Record<string, { x: number; y: number }> = {
-  main:      { x: 4 * TILE + 16, y: 4 * TILE + 16 },     // CEO room
-  coder:     { x: 13 * TILE + 16, y: 4 * TILE + 16 },    // Dev lab
-  infra:     { x: 17 * TILE + 16, y: 4 * TILE + 16 },    // Dev lab
-  design:    { x: 15 * TILE + 16, y: 7 * TILE },          // Dev lab
-  alejo:     { x: 24 * TILE + 16, y: 4 * TILE + 16 },    // Right wing
-  stivens:   { x: 27 * TILE + 16, y: 4 * TILE + 16 },    // Right wing
-  content:   { x: 15 * TILE + 16, y: 18 * TILE + 16 },   // Research room
-  research:  { x: 13 * TILE + 16, y: 15 * TILE + 16 },   // Research room
-  finance:   { x: 17 * TILE + 16, y: 15 * TILE + 16 },   // Research room
-  assistant: { x: 24 * TILE + 16, y: 15 * TILE + 16 },   // Bottom-right
-  kathe:     { x: 4 * TILE + 16, y: 15 * TILE + 16 },    // Lounge
-  alma:      { x: 27 * TILE + 16, y: 15 * TILE + 16 },   // Bottom-right
+  main:      { x: 4 * TILE + 16, y: 4 * TILE + 16 },
+  coder:     { x: 13 * TILE + 16, y: 4 * TILE + 16 },
+  infra:     { x: 17 * TILE + 16, y: 4 * TILE + 16 },
+  design:    { x: 15 * TILE + 16, y: 7 * TILE },
+  alejo:     { x: 24 * TILE + 16, y: 4 * TILE + 16 },
+  stivens:   { x: 27 * TILE + 16, y: 4 * TILE + 16 },
+  content:   { x: 15 * TILE + 16, y: 18 * TILE + 16 },
+  research:  { x: 13 * TILE + 16, y: 15 * TILE + 16 },
+  finance:   { x: 17 * TILE + 16, y: 15 * TILE + 16 },
+  assistant: { x: 24 * TILE + 16, y: 15 * TILE + 16 },
+  kathe:     { x: 4 * TILE + 16, y: 15 * TILE + 16 },
+  alma:      { x: 27 * TILE + 16, y: 15 * TILE + 16 },
 };

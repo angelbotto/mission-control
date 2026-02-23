@@ -2,6 +2,7 @@ import type { Container, Graphics, Text as PIXIText, Texture } from "pixi.js";
 
 export interface CharacterSprite {
   container: Container;
+  innerContainer: Container;
   footL: Graphics;
   footR: Graphics;
   nameLabel: PIXIText;
@@ -53,25 +54,30 @@ export async function createCharacterSprite(
   status: string,
 ): Promise<CharacterSprite> {
   const container = new PIXI.Container();
+  // Inner container for the body — gets flipped for direction
+  // Name label stays outside so it doesn't mirror
+  const inner = new PIXI.Container();
+  container.addChild(inner);
+
   const bodyColor = AGENT_BODY_COLORS[agentKey] || 0x6b7280;
 
   // Shadow
   const shadow = new PIXI.Graphics()
-    .ellipse(0, 20, 10, 4)
-    .fill({ color: 0x000000, alpha: 0.3 });
-  container.addChild(shadow);
+    .ellipse(0, 22, 12, 5)
+    .fill({ color: 0x000000, alpha: 0.35 });
+  inner.addChild(shadow);
 
   // Body (torso)
   const body = new PIXI.Graphics()
-    .roundRect(-7, 0, 14, 16, 2)
+    .roundRect(-8, -2, 16, 18, 3)
     .fill({ color: bodyColor });
-  container.addChild(body);
+  inner.addChild(body);
 
   // Head
   const head = new PIXI.Graphics()
-    .roundRect(-8, -16, 16, 16, 4)
+    .roundRect(-10, -22, 20, 20, 5)
     .fill({ color: 0xf5d0a9 });
-  container.addChild(head);
+  inner.addChild(head);
 
   // Try to load avatar as face texture
   const avatarUrl = AVATAR_MAP[agentKey];
@@ -79,84 +85,86 @@ export async function createCharacterSprite(
     try {
       const tex: Texture = await PIXI.Assets.load(avatarUrl);
       const face = new PIXI.Sprite(tex);
-      face.width = 14;
-      face.height = 14;
-      face.x = -7;
-      face.y = -15;
+      face.width = 18;
+      face.height = 18;
+      face.x = -9;
+      face.y = -21;
       const mask = new PIXI.Graphics()
-        .roundRect(-7, -15, 14, 14, 3)
+        .roundRect(-9, -21, 18, 18, 4)
         .fill({ color: 0xffffff });
+      mask.visible = false;
       face.mask = mask;
-      container.addChild(mask);
-      container.addChild(face);
+      inner.addChild(mask);
+      inner.addChild(face);
     } catch {
-      addPixelFace(PIXI, container);
+      addPixelFace(PIXI, inner);
     }
   } else {
-    addPixelFace(PIXI, container);
+    addPixelFace(PIXI, inner);
   }
 
   // Arms
   const armL = new PIXI.Graphics()
-    .roundRect(-10, 2, 4, 10, 1)
+    .roundRect(-12, 0, 5, 12, 2)
     .fill({ color: bodyColor - 0x111111 });
   const armR = new PIXI.Graphics()
-    .roundRect(6, 2, 4, 10, 1)
+    .roundRect(7, 0, 5, 12, 2)
     .fill({ color: bodyColor - 0x111111 });
-  container.addChild(armL, armR);
+  inner.addChild(armL, armR);
 
   // Feet (animated)
   const footL = new PIXI.Graphics()
-    .roundRect(-6, 16, 5, 6, 1)
-    .fill({ color: 0x333333 });
+    .roundRect(-7, 16, 6, 8, 2)
+    .fill({ color: 0x2a2a2a });
   const footR = new PIXI.Graphics()
-    .roundRect(1, 16, 5, 6, 1)
-    .fill({ color: 0x333333 });
-  container.addChild(footL, footR);
+    .roundRect(1, 16, 6, 8, 2)
+    .fill({ color: 0x2a2a2a });
+  inner.addChild(footL, footR);
 
-  // Status dot
+  // Status dot (on outer container so it doesn't flip)
   const statusDot = new PIXI.Graphics()
-    .circle(10, -14, 4)
-    .fill({ color: STATUS_COLORS[status] || STATUS_COLORS.offline });
+    .circle(12, -20, 5)
+    .fill({ color: STATUS_COLORS[status] || STATUS_COLORS.offline })
+    .circle(12, -20, 5)
+    .stroke({ width: 1.5, color: 0x0d0d14 });
   container.addChild(statusDot);
 
-  // Name label
+  // Name label (on outer container so it doesn't flip)
   const name = AGENT_NAMES[agentKey] || agentKey;
   const labelBg = new PIXI.Graphics()
-    .roundRect(-20, 24, 40, 14, 3)
-    .fill({ color: 0x000000, alpha: 0.7 });
+    .roundRect(-24, 28, 48, 16, 4)
+    .fill({ color: 0x000000, alpha: 0.75 });
   container.addChild(labelBg);
 
   const nameLabel = new PIXI.Text({
     text: name,
     style: {
-      fill: "#cccccc",
-      fontSize: 9,
+      fill: "#e0e0e0",
+      fontSize: 10,
       fontFamily: "monospace",
       fontWeight: "bold",
     },
   });
   nameLabel.anchor.set(0.5, 0);
   nameLabel.x = 0;
-  nameLabel.y = 25;
+  nameLabel.y = 29;
   container.addChild(nameLabel);
 
-  // Scale for pixel art look
-  container.scale.set(1.6);
-
   if (status === "offline") {
-    container.alpha = 0.4;
+    container.alpha = 0.55;
   }
 
-  return { container, footL, footR, nameLabel, statusDot, bodyColor };
+  return { container, innerContainer: inner, footL, footR, nameLabel, statusDot, bodyColor };
 }
 
 function addPixelFace(PIXI: typeof import("pixi.js"), container: Container) {
   const eyes = new PIXI.Graphics()
-    .rect(-4, -10, 2, 2).fill({ color: 0xffffff })
-    .rect(2, -10, 2, 2).fill({ color: 0xffffff })
-    .rect(-3, -9, 1, 1).fill({ color: 0x333333 })
-    .rect(3, -9, 1, 1).fill({ color: 0x333333 });
+    .rect(-5, -14, 3, 3).fill({ color: 0xffffff })
+    .rect(2, -14, 3, 3).fill({ color: 0xffffff })
+    .rect(-4, -13, 2, 2).fill({ color: 0x333333 })
+    .rect(3, -13, 2, 2).fill({ color: 0x333333 });
+  // Mouth
+  eyes.rect(-3, -8, 6, 1).fill({ color: 0xcc8866 });
   container.addChild(eyes);
 }
 
@@ -166,9 +174,9 @@ export function updateWalkAnimation(
   isMoving: boolean,
 ) {
   if (isMoving) {
-    const walkFrame = Math.floor(frame / 8) % 2;
-    sprite.footL.y = walkFrame === 0 ? -2 : 2;
-    sprite.footR.y = walkFrame === 0 ? 2 : -2;
+    const walkPhase = Math.sin(frame * 0.4) * 3;
+    sprite.footL.y = walkPhase;
+    sprite.footR.y = -walkPhase;
   } else {
     sprite.footL.y = 0;
     sprite.footR.y = 0;
@@ -181,6 +189,8 @@ export function updateStatusDot(
   status: string,
 ) {
   sprite.statusDot.clear()
-    .circle(10, -14, 4)
-    .fill({ color: STATUS_COLORS[status] || STATUS_COLORS.offline });
+    .circle(12, -20, 5)
+    .fill({ color: STATUS_COLORS[status] || STATUS_COLORS.offline })
+    .circle(12, -20, 5)
+    .stroke({ width: 1.5, color: 0x0d0d14 });
 }

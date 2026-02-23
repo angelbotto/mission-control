@@ -36,6 +36,7 @@ export default function OfficeWorld({ onAgentClick }: Props) {
   const cameraRef = useRef<Camera | null>(null);
   const worldRef = useRef<import("pixi.js").Container | null>(null);
   const frameRef = useRef(0);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   const initPixi = useCallback(async () => {
     if (!canvasRef.current) return;
@@ -59,36 +60,32 @@ export default function OfficeWorld({ onAgentClick }: Props) {
     const cam = createCamera(w, h);
     cameraRef.current = cam;
 
-    // World container (everything moves with camera)
     const world = new PIXI.Container();
     worldRef.current = world;
     app.stage.addChild(world);
 
-    // Render tilemap
     const { container: tilemapContainer } = await renderTilemap(PIXI);
     world.addChild(tilemapContainer);
 
-    // Render furniture
     const furnitureContainer = renderFurniture(PIXI);
     world.addChild(furnitureContainer);
 
-    // Center camera on map
     centerOnPoint(cam, 480, 350);
 
     // Ticker
-    app.ticker.add(() => {
+    const tickerFn = () => {
       frameRef.current++;
       const frame = frameRef.current;
 
-      // Follow agent if set
       if (cam.followAgent) {
         const agent = agentsRef.current.get(cam.followAgent);
         if (agent && agent.status === "online") {
           centerOnPoint(cam, agent.sprite.container.x, agent.sprite.container.y);
+        } else {
+          cam.followAgent = null;
         }
       }
 
-      // Animate agents
       agentsRef.current.forEach((agent) => {
         const { sprite } = agent;
         if (agent.status === "online") {
@@ -110,8 +107,8 @@ export default function OfficeWorld({ onAgentClick }: Props) {
             sprite.container.x += (dx / dist) * 0.8;
             sprite.container.y += (dy / dist) * 0.8;
             updateWalkAnimation(sprite, frame, true);
-            // Flip direction
-            sprite.container.scale.x = dx < 0 ? -Math.abs(sprite.container.scale.x) : Math.abs(sprite.container.scale.x);
+            // Flip inner body for direction, keep labels unflipped
+            sprite.innerContainer.scale.x = dx < 0 ? -1 : 1;
           }
         } else if (agent.status === "idle") {
           const bob = Math.sin(frame * 0.04 + agent.homeX * 0.1) * 2;
@@ -121,12 +118,12 @@ export default function OfficeWorld({ onAgentClick }: Props) {
         } else {
           sprite.container.x = agent.homeX;
           sprite.container.y = agent.homeY;
-          updateWalkAnimation(sprite, frame, false);
         }
       });
 
       updateCamera(cam, world);
-    });
+    };
+    app.ticker.add(tickerFn);
 
     // Mouse handlers for camera
     const canvas = canvasRef.current;
@@ -140,7 +137,6 @@ export default function OfficeWorld({ onAgentClick }: Props) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
 
-    // Resize
     const onResize = () => {
       const pw = parent?.clientWidth || 900;
       const ph = parent?.clientHeight || 600;
@@ -150,8 +146,8 @@ export default function OfficeWorld({ onAgentClick }: Props) {
     };
     window.addEventListener("resize", onResize);
 
-    // Cleanup ref
-    (app as unknown as Record<string, unknown>).__cleanup = () => {
+    cleanupRef.current = () => {
+      app.ticker.remove(tickerFn);
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("mousedown", onDown);
       window.removeEventListener("mousemove", onMove);
@@ -173,7 +169,7 @@ export default function OfficeWorld({ onAgentClick }: Props) {
         if (existing) {
           existing.status = agent.status;
           existing.data = agent;
-          existing.sprite.container.alpha = agent.status === "offline" ? 0.4 : 1;
+          existing.sprite.container.alpha = agent.status === "offline" ? 0.55 : 1;
           updateStatusDot(PIXI, existing.sprite, agent.status);
         } else {
           const pos = AGENT_DESK[agent.key] || { x: 320, y: 320 };
@@ -182,6 +178,7 @@ export default function OfficeWorld({ onAgentClick }: Props) {
           sprite.container.y = pos.y;
           sprite.container.eventMode = "static";
           sprite.container.cursor = "pointer";
+          sprite.container.hitArea = new PIXI.Rectangle(-20, -28, 40, 60);
           sprite.container.on("pointerdown", (e: import("pixi.js").FederatedPointerEvent) => {
             onAgentClick(agent, e.global.x, e.global.y);
           });
@@ -216,9 +213,8 @@ export default function OfficeWorld({ onAgentClick }: Props) {
     return () => {
       clearInterval(intervalId);
       agentsRef.current.clear();
+      if (cleanupRef.current) cleanupRef.current();
       if (appRef.current) {
-        const cleanup = (appRef.current as unknown as Record<string, unknown>).__cleanup;
-        if (typeof cleanup === "function") cleanup();
         appRef.current.destroy(true);
         appRef.current = null;
       }

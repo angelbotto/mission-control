@@ -18,18 +18,20 @@ export interface Camera {
   canvasH: number;
 }
 
-const MIN_ZOOM = 1;
+const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 3;
-const LERP = 0.08;
+const LERP = 0.1;
 
 export function createCamera(canvasW: number, canvasH: number): Camera {
+  // Auto-fit: zoom so the map fills the canvas (cover, not contain)
+  const fitZoom = Math.max(canvasW / MAP_W, canvasH / MAP_H, MIN_ZOOM);
   return {
     x: 0,
     y: 0,
-    zoom: 1.2,
+    zoom: fitZoom,
     targetX: 0,
     targetY: 0,
-    targetZoom: 1.2,
+    targetZoom: fitZoom,
     isDragging: false,
     dragStartX: 0,
     dragStartY: 0,
@@ -46,15 +48,31 @@ export function updateCamera(cam: Camera, worldContainer: Container) {
   cam.x += (cam.targetX - cam.x) * LERP;
   cam.y += (cam.targetY - cam.y) * LERP;
 
-  // Clamp
+  // Clamp or center
   const scaledW = MAP_W * cam.zoom;
   const scaledH = MAP_H * cam.zoom;
-  const minX = cam.canvasW - scaledW;
-  const minY = cam.canvasH - scaledH;
-  cam.x = Math.min(0, Math.max(minX, cam.x));
-  cam.y = Math.min(0, Math.max(minY, cam.y));
-  cam.targetX = Math.min(0, Math.max(minX, cam.targetX));
-  cam.targetY = Math.min(0, Math.max(minY, cam.targetY));
+
+  if (scaledW <= cam.canvasW) {
+    // Map fits horizontally — center it
+    const cx = (cam.canvasW - scaledW) / 2;
+    cam.x = cx;
+    cam.targetX = cx;
+  } else {
+    const minX = cam.canvasW - scaledW;
+    cam.x = Math.min(0, Math.max(minX, cam.x));
+    cam.targetX = Math.min(0, Math.max(minX, cam.targetX));
+  }
+
+  if (scaledH <= cam.canvasH) {
+    // Map fits vertically — center it
+    const cy = (cam.canvasH - scaledH) / 2;
+    cam.y = cy;
+    cam.targetY = cy;
+  } else {
+    const minY = cam.canvasH - scaledH;
+    cam.y = Math.min(0, Math.max(minY, cam.y));
+    cam.targetY = Math.min(0, Math.max(minY, cam.targetY));
+  }
 
   worldContainer.scale.set(cam.zoom);
   worldContainer.x = cam.x;
@@ -62,8 +80,8 @@ export function updateCamera(cam: Camera, worldContainer: Container) {
 }
 
 export function centerOnPoint(cam: Camera, worldX: number, worldY: number) {
-  cam.targetX = cam.canvasW / 2 - worldX * cam.targetZoom;
-  cam.targetY = cam.canvasH / 2 - worldY * cam.targetZoom;
+  cam.targetX = cam.canvasW / 2 - worldX * cam.zoom;
+  cam.targetY = cam.canvasH / 2 - worldY * cam.zoom;
 }
 
 export function handleWheel(cam: Camera, e: WheelEvent) {
