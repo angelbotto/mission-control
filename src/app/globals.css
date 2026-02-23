@@ -1,26 +1,130 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #111111;
+  --card-border: #1f1f1f;
+  --accent: #00c691;
+  --accent-dim: #00c69120;
+  --muted: #666666;
+  --online: #00c691;
+  --idle: #f59e0b;
+  --offline: #ef4444;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-muted: var(--muted);
+  --color-online: var(--online);
+  --color-idle: var(--idle);
+  --color-offline: var(--offline);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Status dot pulse animation */
+@keyframes pulse-online {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.status-online {
+  animation: pulse-online 2s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — MOBILE (< 768px)
+   ══════════════════════════════════════════ */
+
+/* Generic helpers */
+@media (max-width: 767px) {
+  .hide-mobile { display: none !important; }
+
+  /* Navbar: hide label, keep icon */
+  .tab-label { display: none !important; }
+
+  /* Kanban — horizontal scroll with snap (Trello style) */
+  .kanban-board {
+    display: flex !important;
+    grid-template-columns: none !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 12px;
+    padding-bottom: 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .kanban-col {
+    min-width: 280px;
+    width: 280px;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  /* Team Status — 1 column */
+  .agents-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stats row — 1 column */
+  .stats-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Editor layout */
+  .editor-mobile-toolbar {
+    display: flex !important;
+  }
+  .editor-layout {
+    height: calc(100vh - 160px) !important;
+  }
+}
+
+/* Activity feed timestamp — hide on very small */
+@media (max-width: 479px) {
+  .activity-timestamp-full { display: none !important; }
+  .activity-timestamp-short { display: inline !important; }
+}
+
+/* Tablet — 2 columns for agent cards */
+@media (min-width: 480px) and (max-width: 1023px) {
+  .agents-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }

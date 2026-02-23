@@ -1,0 +1,29 @@
+services:
+  mission-control:
+    build: .
+    container_name: mission-control
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # Path to OpenClaw agents directory (mounted as volume below)
+      - AGENTS_DIR=/data/agents
+      # URL of the OpenClaw Gateway (accessible from container via host network or Tailscale)
+      - GATEWAY_URL=${GATEWAY_URL:-http://host.docker.internal:18789}
+    volumes:
+      # Mount the OpenClaw agents directory read-only
+      - ${AGENTS_DIR_HOST:-/Users/angelbotto/.openclaw/agents}:/data/agents:ro
+    # Add this if running on a Linux host to access host services
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/agents"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.bottico.service=mission-control"
+      - "com.bottico.managed-by=nexo"
