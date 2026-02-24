@@ -1,8 +1,41 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import Shell from "@/components/Shell";
 import { formatRelativeTime } from "@/lib/agents";
+
+function Md({ children, compact }: { children: string; compact?: boolean }) {
+  return (
+    <ReactMarkdown
+      components={{
+        h1: ({ children }) => <h1 style={{ fontSize: compact ? 14 : 18, fontWeight: 700, color: "#ededed", margin: "12px 0 6px" }}>{children}</h1>,
+        h2: ({ children }) => <h2 style={{ fontSize: compact ? 13 : 16, fontWeight: 600, color: "#ededed", margin: "10px 0 4px" }}>{children}</h2>,
+        h3: ({ children }) => <h3 style={{ fontSize: compact ? 12 : 14, fontWeight: 600, color: "#ddd", margin: "8px 0 4px" }}>{children}</h3>,
+        p: ({ children }) => <p style={{ margin: "0 0 8px", lineHeight: 1.6, fontSize: compact ? 12 : 13, color: compact ? "#999" : "#bbb" }}>{children}</p>,
+        strong: ({ children }) => <strong style={{ color: "#ededed", fontWeight: 600 }}>{children}</strong>,
+        em: ({ children }) => <em style={{ color: "#aaa" }}>{children}</em>,
+        ul: ({ children }) => <ul style={{ margin: "4px 0 8px 16px", listStyleType: "disc" }}>{children}</ul>,
+        ol: ({ children }) => <ol style={{ margin: "4px 0 8px 16px", listStyleType: "decimal" }}>{children}</ol>,
+        li: ({ children }) => <li style={{ fontSize: compact ? 12 : 13, color: "#bbb", marginBottom: 2 }}>{children}</li>,
+        code: ({ className, children }) => {
+          const isBlock = className?.includes("language-");
+          return isBlock ? (
+            <pre style={{ background: "#0a0a0a", border: "1px solid #1f1f1f", borderRadius: 6, padding: "10px 14px", overflow: "auto", margin: "8px 0" }}>
+              <code style={{ fontFamily: "monospace", fontSize: 12, color: "#e8e8e8" }}>{children}</code>
+            </pre>
+          ) : (
+            <code style={{ fontFamily: "monospace", fontSize: "0.9em", background: "#1a1a1a", padding: "1px 5px", borderRadius: 3, color: "#00c691" }}>{children}</code>
+          );
+        },
+        pre: ({ children }) => <>{children}</>,
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener" style={{ color: "#38bdf8", textDecoration: "underline" }}>{children}</a>,
+        blockquote: ({ children }) => <blockquote style={{ borderLeft: "3px solid #2a2a2a", paddingLeft: 12, margin: "8px 0", color: "#888" }}>{children}</blockquote>,
+        hr: () => <hr style={{ border: "none", borderTop: "1px solid #1f1f1f", margin: "12px 0" }} />,
+      }}
+    >{children}</ReactMarkdown>
+  );
+}
 
 interface ActivityEvent {
   id: string;
@@ -593,7 +626,7 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
           {task.description && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Descripción</div>
-              <p style={{ fontSize: 13, color: "#bbb", lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{task.description}</p>
+              <Md>{task.description}</Md>
             </div>
           )}
           <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
@@ -721,7 +754,7 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
                     📋
                   </button>
                 </div>
-                <p style={{ margin: "4px 0 0 0" }}>{c.text}</p>
+                <Md compact>{c.text}</Md>
               </div>
             ))}
             <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
