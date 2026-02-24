@@ -4,6 +4,29 @@ import { useEffect, useState, useCallback } from "react";
 import Shell from "@/components/Shell";
 import { formatRelativeTime } from "@/lib/agents";
 
+interface ActivityEvent {
+  id: string;
+  type: "move" | "comment" | "create" | "subtask";
+  taskId: string;
+  taskTitle: string;
+  agent: string;
+  detail: string;
+  timestamp: string;
+}
+
+const AGENT_EMOJI_MAP: Record<string, string> = {
+  K: "\uD83E\uDDE0", Arq: "\uD83C\uDFD7\uFE0F", Vera: "\u26A1", Nexo: "\uD83D\uDDA5\uFE0F",
+  Pluma: "\uD83D\uDD8A\uFE0F", "Oráculo": "\uD83D\uDD2C", Vault: "\uD83D\uDCB0", Iris: "\uD83C\uDFA8",
+  Angel: "\uD83D\uDC64",
+};
+
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  move: "#38bdf8",
+  comment: "#a78bfa",
+  create: "#00c691",
+  subtask: "#f59e0b",
+};
+
 interface Task {
   id: string;
   title: string;
@@ -106,6 +129,8 @@ export default function KanbanPage() {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<ColumnKey | null>(null);
   const [rejectTaskId, setRejectTaskId] = useState<string | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilter>("today");
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
@@ -115,7 +140,28 @@ export default function KanbanPage() {
     setDateFilter(getStoredFilter());
     setRangeFrom(localStorage.getItem("mc-kanban-range-from") || "");
     setRangeTo(localStorage.getItem("mc-kanban-range-to") || "");
+    setActivityOpen(localStorage.getItem("mc-activity-open") === "true");
   }, []);
+
+  const fetchActivity = useCallback(async () => {
+    try {
+      const res = await fetch("/api/mc-tasks/activity");
+      if (res.ok) setActivityEvents(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    fetchActivity();
+    const i = setInterval(fetchActivity, 5000);
+    return () => clearInterval(i);
+  }, [fetchActivity]);
+
+  const toggleActivity = () => {
+    const next = !activityOpen;
+    setActivityOpen(next);
+    localStorage.setItem("mc-activity-open", String(next));
+    if (next) setSelectedTask(null);
+  };
 
   const handleFilterChange = (f: DateFilter) => {
     setDateFilter(f);
@@ -240,6 +286,9 @@ export default function KanbanPage() {
           )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={toggleActivity} style={{ background: activityOpen ? "#1a2a3a" : "transparent", color: activityOpen ? "#38bdf8" : "#888", border: `1px solid ${activityOpen ? "#38bdf8" : "#2a2a2a"}`, borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 150ms ease" }}>
+            {"\uD83D\uDCE1"} Actividad
+          </button>
           <button onClick={() => setShowModal(true)} style={{ background: "#00c691", color: "#0a0a0a", border: "none", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
             + Nueva Tarea
           </button>
@@ -289,7 +338,7 @@ export default function KanbanPage() {
         })}
       </div>
 
-      {selectedTask && (
+      {selectedTask && !activityOpen && (
         <DetailPanel task={selectedTask} allTasks={tasks} columns={COLUMNS} onMove={moveTask} onDelete={deleteTask} onAssign={assignTask} onClose={() => setSelectedTask(null)} onRefresh={fetchTasks}
           onCreateFromComment={async (comment) => {
             await fetch("/api/mc-tasks", {
@@ -325,6 +374,21 @@ export default function KanbanPage() {
           await rejectTask(rejectTaskId, feedback);
           setRejectTaskId(null);
         }} onClose={() => setRejectTaskId(null)} />
+      )}
+
+      {activityOpen && (
+        <ActivityPanel
+          events={activityEvents}
+          onClose={() => { setActivityOpen(false); localStorage.setItem("mc-activity-open", "false"); }}
+          onSelectTask={(taskId) => {
+            const task = tasks.find((t) => t.id === taskId);
+            if (task) {
+              setActivityOpen(false);
+              localStorage.setItem("mc-activity-open", "false");
+              setSelectedTask(task);
+            }
+          }}
+        />
       )}
     </Shell>
   );
@@ -678,6 +742,50 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
             style={{ width: "100%", background: "#1a1111", border: "1px solid #3a1a1a", borderRadius: 6, padding: "8px 12px", color: "#e55", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
             Eliminar tarea
           </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ActivityPanel({ events, onClose, onSelectTask }: {
+  events: ActivityEvent[];
+  onClose: () => void;
+  onSelectTask: (taskId: string) => void;
+}) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 900 }} />
+      <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 340, background: "#111", borderLeft: "1px solid #2a2a2a", zIndex: 901, display: "flex", flexDirection: "column", fontFamily: "var(--font-inter, Inter, sans-serif)" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #1f1f1f", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#ededed" }}>{"\uD83D\uDCE1"} Actividad en tiempo real</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", fontSize: 18, cursor: "pointer" }}>✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
+          {events.length === 0 ? (
+            <div style={{ textAlign: "center", color: "#333", fontSize: 12, padding: 32 }}>Sin actividad reciente</div>
+          ) : (
+            events.map((ev) => {
+              const borderColor = EVENT_TYPE_COLORS[ev.type] || "#555";
+              const emoji = AGENT_EMOJI_MAP[ev.agent] || "\uD83E\uDD16";
+              return (
+                <div key={ev.id} style={{
+                  padding: "10px 12px", marginBottom: 6, background: "#0f0f0f", borderRadius: 6,
+                  borderLeft: `3px solid ${borderColor}`, cursor: "pointer",
+                }} onClick={() => onSelectTask(ev.taskId)}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 14 }}>{emoji}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#ccc" }}>{ev.agent}</span>
+                    <span style={{ fontSize: 11, color: "#888" }}>{ev.detail}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
+                    {ev.taskTitle}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#444" }}>{formatRelativeTime(ev.timestamp)}</div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </>

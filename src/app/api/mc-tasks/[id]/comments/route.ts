@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadTasks, saveTasks } from "../../route";
+import { appendActivity } from "../../activity/route";
 
 export async function POST(
   req: NextRequest,
@@ -19,6 +20,8 @@ export async function POST(
   task.comments.push({ text, by, at: new Date().toISOString() });
   task.updatedAt = new Date().toISOString();
   await saveTasks(store);
+
+  appendActivity({ type: "comment", taskId: id, taskTitle: task.title, agent: by, detail: "comentó" }).catch(() => {});
 
   return NextResponse.json(task);
 }

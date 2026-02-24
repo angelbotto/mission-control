@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { loadTasks, saveTasks } from "../../route";
+import { appendActivity } from "../../activity/route";
 
 type Column = "backlog" | "queue" | "working" | "review" | "done";
 type Actor = "angel" | "agent";
@@ -60,6 +61,8 @@ export async function POST(
   task.column = column;
   task.updatedAt = new Date().toISOString();
   await saveTasks(store);
+
+  appendActivity({ type: "move", taskId: id, taskTitle: task.title, agent: task.agentKey || "Sistema", detail: `movió a ${column}` }).catch(() => {});
 
   if (column === "working") {
     triggerDispatcher(task);

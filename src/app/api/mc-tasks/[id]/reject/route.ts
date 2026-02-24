@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { loadTasks, saveTasks } from "../../route";
+import { appendActivity } from "../../activity/route";
 
 function triggerDispatcher(task: { id: string; title: string; agentId?: string; agentKey?: string }) {
   const agent = task.agentKey || task.agentId || "K";
@@ -51,6 +52,8 @@ export async function POST(
   task.comments.push({ text: `Rejected — feedback: ${feedback}`, by: "angel", at: now });
 
   await saveTasks(store);
+
+  appendActivity({ type: "subtask", taskId: newTask.id, taskTitle: newTask.title, agent: task.agentKey || "Sistema", detail: "tarea derivada creada" }).catch(() => {});
 
   // Trigger dispatcher for the new task
   triggerDispatcher(newTask);

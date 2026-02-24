@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
+import { appendActivity } from "./activity/route";
 
 export interface McTask {
   id: string;
@@ -84,6 +85,8 @@ export async function POST(req: NextRequest) {
     const store = await loadTasks();
     store.tasks.push(task);
     await saveTasks(store);
+
+    appendActivity({ type: "create", taskId: task.id, taskTitle: task.title, agent: task.agentKey || "Angel", detail: "creó tarea" }).catch(() => {});
 
     return NextResponse.json(task, { status: 201 });
   } catch (err) {
