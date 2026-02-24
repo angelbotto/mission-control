@@ -53,6 +53,29 @@ const AGENT_EMOJI_MAP: Record<string, string> = {
   Angel: "\uD83D\uDC64",
 };
 
+const AGENT_AVATAR_MAP: Record<string, string> = {
+  K: "/avatars/k_final_v4.png",
+  Arq: "/avatars/arq_fal_v2.png",
+  Vera: "/avatars/vera_avatar_final.png",
+  Nexo: "/avatars/nexo_fal_v2.png",
+  Pluma: "/avatars/pluma_fal_v3.png",
+  "Oráculo": "/avatars/oraculo_fal_v2.png",
+  Vault: "/avatars/vault.png",
+  Iris: "/avatars/iris.png",
+};
+
+const AGENT_COLORS: Record<string, string> = {
+  K: "#00c691",
+  Arq: "#38bdf8",
+  Vera: "#f59e0b",
+  Nexo: "#6366f1",
+  Pluma: "#a78bfa",
+  "Oráculo": "#ec4899",
+  Vault: "#10b981",
+  Iris: "#f97316",
+  Angel: "#ededed",
+};
+
 const EVENT_TYPE_COLORS: Record<string, string> = {
   move: "#38bdf8",
   comment: "#a78bfa",
@@ -175,13 +198,14 @@ export default function KanbanPage() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("today");
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
-
+  const [groupByAgent, setGroupByAgent] = useState(false);
 
   useEffect(() => {
     setDateFilter(getStoredFilter());
     setRangeFrom(localStorage.getItem("mc-kanban-range-from") || "");
     setRangeTo(localStorage.getItem("mc-kanban-range-to") || "");
     setActivityOpen(localStorage.getItem("mc-activity-open") === "true");
+    setGroupByAgent(localStorage.getItem("mc-group-by-agent") === "true");
   }, []);
 
   const fetchActivity = useCallback(async () => {
@@ -327,6 +351,10 @@ export default function KanbanPage() {
           )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => { const next = !groupByAgent; setGroupByAgent(next); localStorage.setItem("mc-group-by-agent", String(next)); }}
+            style={{ background: groupByAgent ? "#1a2a1a" : "transparent", color: groupByAgent ? "#00c691" : "#888", border: `1px solid ${groupByAgent ? "#00c691" : "#2a2a2a"}`, borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 150ms ease" }}>
+            👤 Por agente
+          </button>
           <button onClick={toggleActivity} style={{ background: activityOpen ? "#1a2a3a" : "transparent", color: activityOpen ? "#38bdf8" : "#888", border: `1px solid ${activityOpen ? "#38bdf8" : "#2a2a2a"}`, borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", transition: "all 150ms ease" }}>
             {"\uD83D\uDCE1"} Actividad
           </button>
@@ -360,7 +388,48 @@ export default function KanbanPage() {
               }}>
                 {colTasks.length === 0 ? (
                   <div style={{ borderRadius: 6, padding: "20px 12px", textAlign: "center", color: "#2a2a2a", fontSize: 11 }}>vacío</div>
-                ) : (
+                ) : groupByAgent ? (() => {
+                  // Group tasks by agentKey
+                  const groups: Record<string, Task[]> = {};
+                  colTasks.forEach((t) => {
+                    const key = t.agentKey || "—";
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(t);
+                  });
+                  return Object.entries(groups).map(([agentKey, agentTasks]) => {
+                    const agentColor = AGENT_COLORS[agentKey] || "#555";
+                    const agentAvatar = AGENT_AVATAR_MAP[agentKey];
+                    const agentEmoji = AGENT_EMOJI_MAP[agentKey] || "🤖";
+                    return (
+                      <div key={agentKey} style={{ marginBottom: 6 }}>
+                        {/* Agent group header */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", marginBottom: 4, background: "#0f0f0f", borderRadius: 6, border: `1px solid ${agentColor}28` }}>
+                          {agentAvatar ? (
+                            <img src={agentAvatar} alt={agentKey}
+                              style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", border: `1.5px solid ${agentColor}`, flexShrink: 0 }}
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 16, flexShrink: 0 }}>{agentEmoji}</span>
+                          )}
+                          <span style={{ fontSize: 13, fontWeight: 700, color: agentColor, letterSpacing: "0.02em" }}>{agentKey}</span>
+                          <span style={{ fontSize: 10, color: "#555", marginLeft: "auto", background: `${agentColor}18`, color: agentColor, borderRadius: 10, padding: "1px 7px", fontWeight: 600 }}>{agentTasks.length}</span>
+                        </div>
+                        {agentTasks.map((task) => (
+                          <TaskCard key={task.id} task={task} color={col.color} columnKey={col.key}
+                            onClick={() => setSelectedTask(task)}
+                            onAssign={() => assignTask(task.id)}
+                            onApprove={() => approveTask(task.id)}
+                            onReject={() => setRejectTaskId(task.id)}
+                            onDragStart={() => setDraggedTaskId(task.id)}
+                            onDragEnd={() => { setDraggedTaskId(null); setDragOverColumn(null); }}
+                            isDragging={draggedTaskId === task.id}
+                          />
+                        ))}
+                      </div>
+                    );
+                  });
+                })() : (
                   colTasks.map((task) => (
                     <TaskCard key={task.id} task={task} color={col.color} columnKey={col.key}
                       onClick={() => setSelectedTask(task)}
