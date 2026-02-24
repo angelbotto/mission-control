@@ -434,14 +434,30 @@ export default function KanbanPage() {
   );
 }
 
-function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReject, onDragStart, onDragEnd, isDragging }: {
+function stripMarkdown(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/\n+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function TaskCard({ task, color, columnKey, onClick, onAssign, onDragStart, onDragEnd, isDragging }: {
   task: Task; color: string; columnKey: ColumnKey; onClick: () => void; onAssign: () => void;
   onApprove: () => void; onReject: () => void;
   onDragStart: () => void; onDragEnd: () => void; isDragging: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const agentEmoji = task.agentKey ? (task.agentKey === "K" ? "👾" : "🤖") : "";
   const typeEmoji: Record<string, string> = { request: "📩", improvement: "✨", bug: "🐛", idea: "💡" };
+  const cleanDesc = stripMarkdown(task.description || "");
+  const badge = SOURCE_BADGES[task.source];
 
   return (
     <div
@@ -453,49 +469,61 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReje
       onMouseLeave={() => setHovered(false)}
       style={{
         background: hovered ? "#161616" : "#111",
-        border: "1px solid #1f1f1f",
-        borderRadius: 8, padding: 12,
+        border: `1px solid ${hovered ? "#2a2a2a" : "#1a1a1a"}`,
+        borderRadius: 8,
+        padding: "10px 12px",
         borderLeft: `3px solid ${color}`,
-        cursor: "grab", transition: "all 150ms ease",
-        position: "relative",
+        cursor: "pointer",
+        transition: "all 150ms ease",
         opacity: isDragging ? 0.4 : 1,
       }}
     >
-      {task.parentId && (
-        <span style={{ fontSize: 9, color: "#a78bfa", background: "#1a1a2a", padding: "1px 5px", borderRadius: 3, border: "1px solid #2a2a3a", marginBottom: 4, display: "inline-block" }}>↩ subtask</span>
-      )}
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#ededed", marginBottom: 4 }}>{task.taskType && <span style={{ marginRight: 4 }}>{typeEmoji[task.taskType]}</span>}{task.title}</div>
-      {task.agentKey && (
-        <div style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
-          <span>{agentEmoji}</span><span>{task.agentKey}</span>
-        </div>
-      )}
-      {task.description && (
-        <p style={{ fontSize: 11, color: "#666", margin: "0 0 6px 0", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{task.description}</p>
-      )}
-      {task.comments && task.comments.length > 0 && (
-        <p style={{ fontSize: 10, color: "#555", margin: "0 0 6px 0", lineHeight: 1.3, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          💬 {task.comments[task.comments.length - 1].text}
-        </p>
-      )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 10, color: "#444" }}>{formatRelativeTime(task.updatedAt)}</span>
-        {(columnKey === "backlog" || columnKey === "queue") && (
-          <button onClick={(e) => { e.stopPropagation(); onAssign(); }}
-            style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 4, padding: "2px 8px", color: "#00c691", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
-            ⏩ Priorizar
-          </button>
-        )}
+      {/* Title row */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 4, marginBottom: cleanDesc ? 5 : 8 }}>
+        {task.taskType && <span style={{ fontSize: 11, flexShrink: 0, marginTop: 1 }}>{typeEmoji[task.taskType]}</span>}
+        {task.parentId && <span style={{ fontSize: 9, color: "#a78bfa", flexShrink: 0, marginTop: 2 }}>↩</span>}
+        <span style={{
+          fontSize: 12, fontWeight: 600, color: "#e0e0e0", lineHeight: 1.4,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}>{task.title}</span>
       </div>
-      {(() => {
-        const badge = SOURCE_BADGES[task.source];
-        if (!badge) return null;
-        return (
-          <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, color: badge.color, background: badge.bg, padding: "1px 6px", borderRadius: 3, border: `1px solid ${badge.color}33` }}>
-            {badge.emoji} {badge.label}
-          </span>
-        );
-      })()}
+
+      {/* Description — 1 line, clean */}
+      {cleanDesc && (
+        <div style={{
+          fontSize: 11, color: "#555", marginBottom: 8, lineHeight: 1.3,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>{cleanDesc}</div>
+      )}
+
+      {/* Footer */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {task.agentKey && (
+            <span style={{ fontSize: 10, color: "#444", background: "#1a1a1a", border: "1px solid #222", borderRadius: 3, padding: "1px 5px" }}>
+              {task.agentKey}
+            </span>
+          )}
+          {badge && (
+            <span style={{ fontSize: 9, color: badge.color, background: badge.bg, padding: "1px 5px", borderRadius: 3 }}>
+              {badge.emoji}
+            </span>
+          )}
+          {task.comments && task.comments.length > 0 && (
+            <span style={{ fontSize: 10, color: "#444" }}>💬 {task.comments.length}</span>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, color: "#383838" }}>{formatRelativeTime(task.updatedAt)}</span>
+          {(columnKey === "backlog" || columnKey === "queue") && (
+            <button onClick={(e) => { e.stopPropagation(); onAssign(); }}
+              style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 4, padding: "2px 7px", color: "#00c691", fontSize: 10, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+              ⏩
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
