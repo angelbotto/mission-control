@@ -413,7 +413,7 @@ export default function KanbanPage() {
                             <span style={{ fontSize: 16, flexShrink: 0 }}>{agentEmoji}</span>
                           )}
                           <span style={{ fontSize: 13, fontWeight: 700, color: agentColor, letterSpacing: "0.02em" }}>{agentKey}</span>
-                          <span style={{ fontSize: 10, color: "#555", marginLeft: "auto", background: `${agentColor}18`, color: agentColor, borderRadius: 10, padding: "1px 7px", fontWeight: 600 }}>{agentTasks.length}</span>
+                          <span style={{ fontSize: 10, marginLeft: "auto", background: `${agentColor}18`, color: agentColor, borderRadius: 10, padding: "1px 7px", fontWeight: 600 }}>{agentTasks.length}</span>
                         </div>
                         {agentTasks.map((task) => (
                           <TaskCard key={task.id} task={task} color={col.color} columnKey={col.key}
