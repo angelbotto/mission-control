@@ -17,6 +17,7 @@ interface Task {
   comments: Array<{ text: string; by: string; at: string }>;
   source: string;
   parentId?: string;
+  taskType?: "request" | "improvement" | "bug" | "idea";
   attachments?: Array<{ name: string; url: string; addedBy: string; addedAt: string }>;
 }
 
@@ -154,11 +155,12 @@ export default function KanbanPage() {
   const moveTask = async (id: string, column: ColumnKey) => {
     setTasks((prev) => prev.map((t) => t.id === id ? { ...t, column } : t));
     setSelectedTask((prev) => prev?.id === id ? { ...prev, column } : prev);
-    await fetch(`/api/mc-tasks/${id}/move`, {
+    const res = await fetch(`/api/mc-tasks/${id}/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ column }),
+      body: JSON.stringify({ column, actor: "angel" }),
     });
+    if (!res.ok) await fetchTasks();
   };
 
   const deleteTask = async (id: string) => {
@@ -190,7 +192,14 @@ export default function KanbanPage() {
   const handleDrop = (column: ColumnKey) => {
     if (draggedTaskId) {
       const task = tasks.find((t) => t.id === draggedTaskId);
-      if (task && task.column !== column) {
+      const angelMoves: Record<ColumnKey, ColumnKey[]> = {
+        backlog: ["queue"],
+        queue: ["working", "backlog"],
+        working: ["review", "backlog"],
+        review: ["done", "working", "backlog"],
+        done: ["backlog"],
+      };
+      if (task && task.column !== column && angelMoves[task.column]?.includes(column)) {
         moveTask(draggedTaskId, column);
       }
     }
@@ -328,6 +337,7 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReje
 }) {
   const [hovered, setHovered] = useState(false);
   const agentEmoji = task.agentKey ? (task.agentKey === "K" ? "👾" : "🤖") : "";
+  const typeEmoji: Record<string, string> = { request: "📩", improvement: "✨", bug: "🐛", idea: "💡" };
 
   return (
     <div
@@ -350,7 +360,7 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReje
       {task.parentId && (
         <span style={{ fontSize: 9, color: "#a78bfa", background: "#1a1a2a", padding: "1px 5px", borderRadius: 3, border: "1px solid #2a2a3a", marginBottom: 4, display: "inline-block" }}>↩ subtask</span>
       )}
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#ededed", marginBottom: 4 }}>{task.title}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "#ededed", marginBottom: 4 }}>{task.taskType && <span style={{ marginRight: 4 }}>{typeEmoji[task.taskType]}</span>}{task.title}</div>
       {task.agentKey && (
         <div style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
           <span>{agentEmoji}</span><span>{task.agentKey}</span>
@@ -538,12 +548,22 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Mover a</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {columns.filter((c) => c.key !== task.column).map((c) => (
-                <button key={c.key} onClick={() => onMove(task.id, c.key)}
-                  style={{ display: "flex", alignItems: "center", gap: 8, background: "#0f0f0f", border: "1px solid #1f1f1f", borderRadius: 6, padding: "8px 12px", color: "#ccc", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-                  <span>{c.icon}</span><span>{c.label}</span>
-                </button>
-              ))}
+              {(() => {
+                const angelMoves: Record<ColumnKey, ColumnKey[]> = {
+                  backlog: ["queue"],
+                  queue: ["working", "backlog"],
+                  working: ["review", "backlog"],
+                  review: ["done", "working", "backlog"],
+                  done: ["backlog"],
+                };
+                const allowed = angelMoves[task.column] || [];
+                return columns.filter((c) => allowed.includes(c.key)).map((c) => (
+                  <button key={c.key} onClick={() => onMove(task.id, c.key)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, background: "#0f0f0f", border: "1px solid #1f1f1f", borderRadius: 6, padding: "8px 12px", color: "#ccc", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                    <span>{c.icon}</span><span>{c.label}</span>
+                  </button>
+                ));
+              })()}
             </div>
           </div>
 
@@ -672,7 +692,7 @@ function NewTaskModal({ agents, onSubmit, onClose }: {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [agent, setAgent] = useState("");
-  const [column, setColumn] = useState<ColumnKey>("backlog");
+  const [taskType, setTaskType] = useState<"request" | "improvement" | "bug" | "idea">("request");
   const [enhancing, setEnhancing] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -703,8 +723,9 @@ function NewTaskModal({ agents, onSubmit, onClose }: {
       description: desc.trim(),
       agentId: sel?.dirName || sel?.key?.toLowerCase() || "",
       agentKey: sel?.key || "",
-      column,
+      column: "backlog",
       source: "kanban",
+      taskType,
     });
     setSaving(false);
   };
@@ -740,9 +761,12 @@ function NewTaskModal({ agents, onSubmit, onClose }: {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Columna</label>
-              <select value={column} onChange={(e) => setColumn(e.target.value as ColumnKey)} style={{ ...inputStyle, cursor: "pointer" }}>
-                {COLUMNS.map((c) => <option key={c.key} value={c.key}>{c.icon} {c.label}</option>)}
+              <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Tipo</label>
+              <select value={taskType} onChange={(e) => setTaskType(e.target.value as "request" | "improvement" | "bug" | "idea")} style={{ ...inputStyle, cursor: "pointer" }}>
+                <option value="request">📩 Nueva solicitud</option>
+                <option value="improvement">✨ Mejora</option>
+                <option value="bug">🐛 Bug</option>
+                <option value="idea">💡 Idea</option>
               </select>
             </div>
           </div>

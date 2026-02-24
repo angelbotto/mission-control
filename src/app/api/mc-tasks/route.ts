@@ -2,15 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
-import { exec } from "child_process";
-
-function triggerDispatcher(task: { id: string; title: string; agentId?: string; agentKey?: string }) {
-  const agent = task.agentKey || task.agentId || "K";
-  const text = `📋 Tarea en Working: "${task.title}" (asignada a ${agent}, id: ${task.id}). Ejecuta inmediatamente.`;
-  exec(`openclaw system event --text ${JSON.stringify(text)} --mode now`, (err) => {
-    if (err) console.error("[mc-tasks] trigger error:", err.message);
-  });
-}
 
 export interface McTask {
   id: string;
@@ -25,6 +16,7 @@ export interface McTask {
   comments: Array<{ text: string; by: string; at: string }>;
   source: string;
   parentId?: string;
+  taskType?: "request" | "improvement" | "bug" | "idea";
   attachments?: Array<{ name: string; url: string; addedBy: string; addedAt: string }>;
 }
 
@@ -64,37 +56,34 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, description, agentId, agentKey, column, source, parentId, attachments } = body;
+    const { title, description, agentId, agentKey, source, parentId, attachments, taskType } = body;
 
     if (!title) {
       return NextResponse.json({ error: "title required" }, { status: 400 });
     }
 
     const now = new Date().toISOString();
+    const validTypes = ["request", "improvement", "bug", "idea"];
     const task: McTask = {
       id: randomUUID(),
       title,
       description: description || "",
       agentId: agentId || "",
       agentKey: agentKey || "",
-      column: column || "backlog",
+      column: "backlog",
       createdAt: now,
       updatedAt: now,
       createdBy: "angel",
       comments: [],
       source: source || "kanban",
       ...(parentId ? { parentId } : {}),
+      ...(taskType && validTypes.includes(taskType) ? { taskType } : {}),
       ...(attachments ? { attachments } : {}),
     };
 
     const store = await loadTasks();
     store.tasks.push(task);
     await saveTasks(store);
-
-    // Trigger inmediato si la tarea nace directamente en "working"
-    if (task.column === "working") {
-      triggerDispatcher(task);
-    }
 
     return NextResponse.json(task, { status: 201 });
   } catch (err) {
