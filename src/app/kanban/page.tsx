@@ -335,30 +335,30 @@ export default function KanbanPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(180px, 1fr))", gap: 8, alignItems: "start", overflowX: "auto", paddingBottom: 8 }}>
         {COLUMNS.map((col) => {
           const colTasks = filteredTasks.filter((t) => t.column === col.key);
           const isDragOver = dragOverColumn === col.key && draggedTaskId !== null;
           return (
-            <div key={col.key}
+            <div key={col.key} style={{ minWidth: 0 }}
               onDragOver={(e) => { e.preventDefault(); setDragOverColumn(col.key); }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverColumn(null); }}
               onDrop={(e) => { e.preventDefault(); handleDrop(col.key); }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, padding: "8px 10px", background: "#0f0f0f", borderRadius: 6, border: "1px solid #1a1a1a" }}>
-                <span>{col.icon}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#888", flex: 1 }}>{col.label}</span>
-                <span style={{ fontSize: 10, color: "#444", background: "#1a1a1a", borderRadius: 10, padding: "1px 6px" }}>{colTasks.length}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, padding: "6px 10px", background: "#0f0f0f", borderRadius: 6, border: "1px solid #1a1a1a", position: "sticky", top: 0, zIndex: 1 }}>
+                <span style={{ fontSize: 11 }}>{col.icon}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#888", flex: 1 }}>{col.label}</span>
+                <span style={{ fontSize: 10, color: col.color, background: `${col.color}18`, borderRadius: 10, padding: "1px 7px", fontWeight: 600 }}>{colTasks.length}</span>
               </div>
               <div style={{
-                display: "flex", flexDirection: "column", gap: 8, minHeight: 100,
-                borderRadius: 8, padding: isDragOver ? 4 : 0,
+                display: "flex", flexDirection: "column", gap: 4, minHeight: 80,
+                borderRadius: 6, padding: isDragOver ? 4 : 2,
                 border: isDragOver ? `2px dashed ${col.color}` : "2px dashed transparent",
-                background: isDragOver ? `${col.color}10` : "transparent",
+                background: isDragOver ? `${col.color}08` : "transparent",
                 transition: "all 150ms ease",
               }}>
                 {colTasks.length === 0 ? (
-                  <div style={{ border: "1px dashed #1a1a1a", borderRadius: 8, padding: 24, textAlign: "center", color: "#333", fontSize: 11 }}>Sin tareas</div>
+                  <div style={{ borderRadius: 6, padding: "20px 12px", textAlign: "center", color: "#2a2a2a", fontSize: 11 }}>vacío</div>
                 ) : (
                   colTasks.map((task) => (
                     <TaskCard key={task.id} task={task} color={col.color} columnKey={col.key}
@@ -456,7 +456,6 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onDragStart, onDr
 }) {
   const [hovered, setHovered] = useState(false);
   const typeEmoji: Record<string, string> = { request: "📩", improvement: "✨", bug: "🐛", idea: "💡" };
-  const cleanDesc = stripMarkdown(task.description || "");
   const badge = SOURCE_BADGES[task.source];
 
   return (
@@ -469,60 +468,50 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onDragStart, onDr
       onMouseLeave={() => setHovered(false)}
       style={{
         background: hovered ? "#161616" : "#111",
-        border: `1px solid ${hovered ? "#2a2a2a" : "#1a1a1a"}`,
-        borderRadius: 8,
-        padding: "10px 12px",
-        borderLeft: `3px solid ${color}`,
+        border: `1px solid ${hovered ? "#252525" : "#1a1a1a"}`,
+        borderRadius: 6,
+        padding: "8px 10px",
+        borderLeft: `2px solid ${color}`,
         cursor: "pointer",
-        transition: "all 150ms ease",
-        opacity: isDragging ? 0.4 : 1,
+        transition: "background 100ms ease, border-color 100ms ease",
+        opacity: isDragging ? 0.35 : 1,
+        userSelect: "none",
       }}
     >
-      {/* Title row */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 4, marginBottom: cleanDesc ? 5 : 8 }}>
-        {task.taskType && <span style={{ fontSize: 11, flexShrink: 0, marginTop: 1 }}>{typeEmoji[task.taskType]}</span>}
-        {task.parentId && <span style={{ fontSize: 9, color: "#a78bfa", flexShrink: 0, marginTop: 2 }}>↩</span>}
-        <span style={{
-          fontSize: 12, fontWeight: 600, color: "#e0e0e0", lineHeight: 1.4,
-          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-        }}>{task.title}</span>
+      {/* Title — single most important element */}
+      <div style={{
+        fontSize: 12, fontWeight: 500, color: "#d8d8d8", lineHeight: 1.45,
+        marginBottom: 6,
+        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+        overflow: "hidden", wordBreak: "break-word",
+      }}>
+        {task.taskType && <span style={{ marginRight: 3, opacity: 0.7 }}>{typeEmoji[task.taskType]}</span>}
+        {task.parentId && <span style={{ marginRight: 3, fontSize: 10, color: "#a78bfa" }}>↩</span>}
+        {task.title}
       </div>
 
-      {/* Description — 1 line, clean */}
-      {cleanDesc && (
-        <div style={{
-          fontSize: 11, color: "#555", marginBottom: 8, lineHeight: 1.3,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>{cleanDesc}</div>
-      )}
-
-      {/* Footer */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {task.agentKey && (
-            <span style={{ fontSize: 10, color: "#444", background: "#1a1a1a", border: "1px solid #222", borderRadius: 3, padding: "1px 5px" }}>
-              {task.agentKey}
-            </span>
-          )}
-          {badge && (
-            <span style={{ fontSize: 9, color: badge.color, background: badge.bg, padding: "1px 5px", borderRadius: 3 }}>
-              {badge.emoji}
-            </span>
-          )}
-          {task.comments && task.comments.length > 0 && (
-            <span style={{ fontSize: 10, color: "#444" }}>💬 {task.comments.length}</span>
-          )}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 10, color: "#383838" }}>{formatRelativeTime(task.updatedAt)}</span>
-          {(columnKey === "backlog" || columnKey === "queue") && (
-            <button onClick={(e) => { e.stopPropagation(); onAssign(); }}
-              style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 4, padding: "2px 7px", color: "#00c691", fontSize: 10, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
-              ⏩
-            </button>
-          )}
-        </div>
+      {/* Footer: badges + time */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "nowrap", minWidth: 0 }}>
+        {task.agentKey && (
+          <span style={{ fontSize: 9, color: "#555", background: "#181818", border: "1px solid #222", borderRadius: 3, padding: "1px 4px", flexShrink: 0 }}>
+            {task.agentKey}
+          </span>
+        )}
+        {badge && (
+          <span style={{ fontSize: 9, color: badge.color, flexShrink: 0 }}>{badge.emoji}</span>
+        )}
+        {task.comments && task.comments.length > 0 && (
+          <span style={{ fontSize: 9, color: "#383838", flexShrink: 0 }}>💬{task.comments.length}</span>
+        )}
+        <span style={{ fontSize: 9, color: "#2e2e2e", marginLeft: "auto", flexShrink: 0 }}>
+          {formatRelativeTime(task.updatedAt)}
+        </span>
+        {(columnKey === "backlog" || columnKey === "queue") && (
+          <button onClick={(e) => { e.stopPropagation(); onAssign(); }}
+            style={{ background: "transparent", border: "none", color: "#00c691", fontSize: 11, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1 }}>
+            ⏩
+          </button>
+        )}
       </div>
     </div>
   );
