@@ -23,7 +23,8 @@ export interface McTask {
   updatedAt: string;
   createdBy: string;
   comments: Array<{ text: string; by: string; at: string }>;
-  source: "kanban" | "chat" | "gsd";
+  source: "kanban" | "chat" | "gsd" | "review";
+  parentId?: string;
 }
 
 interface TaskStore {
@@ -48,9 +49,13 @@ export async function saveTasks(store: TaskStore): Promise<void> {
   await writeFile(TASKS_FILE, JSON.stringify(store, null, 2), "utf-8");
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const store = await loadTasks();
-  return NextResponse.json(store.tasks, {
+  const parentId = req.nextUrl.searchParams.get("parentId");
+  const tasks = parentId
+    ? store.tasks.filter((t) => t.parentId === parentId)
+    : store.tasks;
+  return NextResponse.json(tasks, {
     headers: { "Cache-Control": "no-store" },
   });
 }
@@ -58,7 +63,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, description, agentId, agentKey, column, source } = body;
+    const { title, description, agentId, agentKey, column, source, parentId } = body;
 
     if (!title) {
       return NextResponse.json({ error: "title required" }, { status: 400 });
@@ -77,6 +82,7 @@ export async function POST(req: NextRequest) {
       createdBy: "angel",
       comments: [],
       source: source || "kanban",
+      ...(parentId ? { parentId } : {}),
     };
 
     const store = await loadTasks();

@@ -16,6 +16,7 @@ interface Task {
   createdBy: string;
   comments: Array<{ text: string; by: string; at: string }>;
   source: string;
+  parentId?: string;
 }
 
 interface AgentOption {
@@ -47,6 +48,10 @@ export default function KanbanPage() {
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<ColumnKey | null>(null);
+  const [rejectTaskId, setRejectTaskId] = useState<string | null>(null);
+
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch("/api/mc-tasks");
@@ -54,11 +59,10 @@ export default function KanbanPage() {
     } catch { /* ignore */ }
   }, []);
 
-  // Auto-sync GSD in background
   useEffect(() => {
     const syncGSD = () => fetch("/api/gsd-sync", { method: "POST" }).then(() => fetchTasks()).catch(() => {});
-    syncGSD(); // sync on load
-    const gsdInterval = setInterval(syncGSD, 5 * 60 * 1000); // every 5 min
+    syncGSD();
+    const gsdInterval = setInterval(syncGSD, 5 * 60 * 1000);
     return () => clearInterval(gsdInterval);
   }, [fetchTasks]);
 
@@ -90,6 +94,32 @@ export default function KanbanPage() {
     await fetch(`/api/mc-tasks/${id}/assign`, { method: "POST" });
   };
 
+  const approveTask = async (id: string) => {
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, column: "done" as ColumnKey } : t));
+    await fetch(`/api/mc-tasks/${id}/review`, { method: "POST" });
+  };
+
+  const rejectTask = async (id: string, feedback: string) => {
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, column: "done" as ColumnKey } : t));
+    await fetch(`/api/mc-tasks/${id}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback }),
+    });
+    await fetchTasks();
+  };
+
+  const handleDrop = (column: ColumnKey) => {
+    if (draggedTaskId) {
+      const task = tasks.find((t) => t.id === draggedTaskId);
+      if (task && task.column !== column) {
+        moveTask(draggedTaskId, column);
+      }
+    }
+    setDraggedTaskId(null);
+    setDragOverColumn(null);
+  };
+
   return (
     <Shell>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
@@ -106,19 +136,38 @@ export default function KanbanPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, alignItems: "start" }}>
         {COLUMNS.map((col) => {
           const colTasks = tasks.filter((t) => t.column === col.key);
+          const isDragOver = dragOverColumn === col.key && draggedTaskId !== null;
           return (
-            <div key={col.key}>
+            <div key={col.key}
+              onDragOver={(e) => { e.preventDefault(); setDragOverColumn(col.key); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverColumn(null); }}
+              onDrop={(e) => { e.preventDefault(); handleDrop(col.key); }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, padding: "8px 10px", background: "#0f0f0f", borderRadius: 6, border: "1px solid #1a1a1a" }}>
                 <span>{col.icon}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: "#888", flex: 1 }}>{col.label}</span>
                 <span style={{ fontSize: 10, color: "#444", background: "#1a1a1a", borderRadius: 10, padding: "1px 6px" }}>{colTasks.length}</span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 100 }}>
+              <div style={{
+                display: "flex", flexDirection: "column", gap: 8, minHeight: 100,
+                borderRadius: 8, padding: isDragOver ? 4 : 0,
+                border: isDragOver ? `2px dashed ${col.color}` : "2px dashed transparent",
+                background: isDragOver ? `${col.color}10` : "transparent",
+                transition: "all 150ms ease",
+              }}>
                 {colTasks.length === 0 ? (
                   <div style={{ border: "1px dashed #1a1a1a", borderRadius: 8, padding: 24, textAlign: "center", color: "#333", fontSize: 11 }}>Sin tareas</div>
                 ) : (
                   colTasks.map((task) => (
-                    <TaskCard key={task.id} task={task} color={col.color} columnKey={col.key} onClick={() => setSelectedTask(task)} onAssign={() => assignTask(task.id)} />
+                    <TaskCard key={task.id} task={task} color={col.color} columnKey={col.key}
+                      onClick={() => setSelectedTask(task)}
+                      onAssign={() => assignTask(task.id)}
+                      onApprove={() => approveTask(task.id)}
+                      onReject={() => setRejectTaskId(task.id)}
+                      onDragStart={() => setDraggedTaskId(task.id)}
+                      onDragEnd={() => { setDraggedTaskId(null); setDragOverColumn(null); }}
+                      isDragging={draggedTaskId === task.id}
+                    />
                   ))
                 )}
               </div>
@@ -128,7 +177,7 @@ export default function KanbanPage() {
       </div>
 
       {selectedTask && (
-        <DetailPanel task={selectedTask} columns={COLUMNS} onMove={moveTask} onDelete={deleteTask} onAssign={assignTask} onClose={() => setSelectedTask(null)} />
+        <DetailPanel task={selectedTask} allTasks={tasks} columns={COLUMNS} onMove={moveTask} onDelete={deleteTask} onAssign={assignTask} onClose={() => setSelectedTask(null)} onRefresh={fetchTasks} />
       )}
 
       {showModal && (
@@ -142,17 +191,46 @@ export default function KanbanPage() {
           setShowModal(false);
         }} onClose={() => setShowModal(false)} />
       )}
+
+      {rejectTaskId && (
+        <RejectModal onSubmit={async (feedback) => {
+          await rejectTask(rejectTaskId, feedback);
+          setRejectTaskId(null);
+        }} onClose={() => setRejectTaskId(null)} />
+      )}
     </Shell>
   );
 }
 
-function TaskCard({ task, color, columnKey, onClick, onAssign }: { task: Task; color: string; columnKey: ColumnKey; onClick: () => void; onAssign: () => void }) {
+function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReject, onDragStart, onDragEnd, isDragging }: {
+  task: Task; color: string; columnKey: ColumnKey; onClick: () => void; onAssign: () => void;
+  onApprove: () => void; onReject: () => void;
+  onDragStart: () => void; onDragEnd: () => void; isDragging: boolean;
+}) {
   const [hovered, setHovered] = useState(false);
   const agentEmoji = task.agentKey ? (task.agentKey === "K" ? "👾" : "🤖") : "";
 
   return (
-    <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ background: hovered ? "#161616" : "#111", border: "1px solid #1f1f1f", borderRadius: 8, padding: 12, borderLeft: `3px solid ${color}`, cursor: "pointer", transition: "background 150ms ease", position: "relative" }}>
+    <div
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
+      onDragEnd={onDragEnd}
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: hovered ? "#161616" : "#111",
+        border: "1px solid #1f1f1f",
+        borderRadius: 8, padding: 12,
+        borderLeft: `3px solid ${color}`,
+        cursor: "grab", transition: "all 150ms ease",
+        position: "relative",
+        opacity: isDragging ? 0.4 : 1,
+      }}
+    >
+      {task.parentId && (
+        <span style={{ fontSize: 9, color: "#a78bfa", background: "#1a1a2a", padding: "1px 5px", borderRadius: 3, border: "1px solid #2a2a3a", marginBottom: 4, display: "inline-block" }}>↩ subtask</span>
+      )}
       <div style={{ fontSize: 13, fontWeight: 600, color: "#ededed", marginBottom: 4 }}>{task.title}</div>
       {task.agentKey && (
         <div style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
@@ -170,6 +248,20 @@ function TaskCard({ task, color, columnKey, onClick, onAssign }: { task: Task; c
             ▶️ Go
           </button>
         )}
+        {columnKey === "review" && (
+          <div style={{ display: "flex", gap: 4 }}>
+            <button onClick={(e) => { e.stopPropagation(); onApprove(); }}
+              style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 4, padding: "2px 8px", color: "#00c691", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
+              title="Approve">
+              ✅
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onReject(); }}
+              style={{ background: "#2a1a1a", border: "1px solid #3a2a2a", borderRadius: 4, padding: "2px 8px", color: "#f59e0b", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
+              title="Request Changes">
+              🔄
+            </button>
+          </div>
+        )}
       </div>
       {task.source === "gsd" ? (
         <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, color: "#7c8aff", background: "#1a1a2a", padding: "1px 6px", borderRadius: 3, border: "1px solid #2a2a3a" }}>📋 GSD</span>
@@ -180,10 +272,72 @@ function TaskCard({ task, color, columnKey, onClick, onAssign }: { task: Task; c
   );
 }
 
-function DetailPanel({ task, columns, onMove, onDelete, onAssign, onClose }: {
-  task: Task; columns: ColumnDef[]; onMove: (id: string, col: ColumnKey) => void; onDelete: (id: string) => void; onAssign: (id: string) => void; onClose: () => void;
+function RejectModal({ onSubmit, onClose }: { onSubmit: (feedback: string) => Promise<void>; onClose: () => void }) {
+  const [feedback, setFeedback] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const submit = async () => {
+    if (!feedback.trim()) return;
+    setSending(true);
+    await onSubmit(feedback.trim());
+    setSending(false);
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: 10, padding: 24, width: 380, maxWidth: "90vw" }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: "#ededed", margin: "0 0 16px 0" }}>🔄 Request Changes</h3>
+          <textarea
+            value={feedback} onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Describe what needs to change..."
+            rows={4} autoFocus
+            style={{ width: "100%", background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 12px", color: "#e8e8e8", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", minHeight: 80, boxSizing: "border-box" }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <button onClick={onClose} style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 6, padding: "7px 16px", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+            <button onClick={submit} disabled={!feedback.trim() || sending}
+              style={{ background: feedback.trim() ? "#f59e0b" : "#2a2a1a", color: feedback.trim() ? "#0a0a0a" : "#555", border: "none", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: feedback.trim() ? "pointer" : "default", fontFamily: "inherit" }}>
+              {sending ? "Enviando..." : "Enviar Feedback"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onClose, onRefresh }: {
+  task: Task; allTasks: Task[]; columns: ColumnDef[]; onMove: (id: string, col: ColumnKey) => void; onDelete: (id: string) => void; onAssign: (id: string) => void; onClose: () => void; onRefresh: () => void;
 }) {
   const current = columns.find((c) => c.key === task.column)!;
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false);
+  const [subtaskTitle, setSubtaskTitle] = useState("");
+  const [creatingSub, setCreatingSub] = useState(false);
+  const subtasks = allTasks.filter((t) => t.parentId === task.id);
+
+  const createSubtask = async () => {
+    if (!subtaskTitle.trim()) return;
+    setCreatingSub(true);
+    await fetch("/api/mc-tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: subtaskTitle.trim(),
+        description: "",
+        agentId: task.agentId,
+        agentKey: task.agentKey,
+        column: "backlog",
+        source: "kanban",
+        parentId: task.id,
+      }),
+    });
+    setSubtaskTitle("");
+    setShowSubtaskForm(false);
+    setCreatingSub(false);
+    onRefresh();
+  };
+
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 900 }} />
@@ -192,6 +346,7 @@ function DetailPanel({ task, columns, onMove, onDelete, onAssign, onClose }: {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: current.color, display: "inline-block" }} />
             <span style={{ fontSize: 11, color: "#888", fontWeight: 500 }}>{current.icon} {current.label}</span>
+            {task.parentId && <span style={{ fontSize: 9, color: "#a78bfa", background: "#1a1a2a", padding: "1px 5px", borderRadius: 3 }}>↩ subtask</span>}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", fontSize: 18, cursor: "pointer" }}>✕</button>
         </div>
@@ -227,6 +382,44 @@ function DetailPanel({ task, columns, onMove, onDelete, onAssign, onClose }: {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Sub-tasks section */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sub-tasks</div>
+              <button onClick={() => setShowSubtaskForm(true)}
+                style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 4, padding: "2px 8px", color: "#888", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                ＋ Sub-task
+              </button>
+            </div>
+            {showSubtaskForm && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <input type="text" value={subtaskTitle} onChange={(e) => setSubtaskTitle(e.target.value)}
+                  placeholder="Sub-task title" autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter") createSubtask(); if (e.key === "Escape") setShowSubtaskForm(false); }}
+                  style={{ flex: 1, background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 4, padding: "6px 8px", color: "#e8e8e8", fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                />
+                <button onClick={createSubtask} disabled={!subtaskTitle.trim() || creatingSub}
+                  style={{ background: "#00c691", color: "#0a0a0a", border: "none", borderRadius: 4, padding: "6px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  Add
+                </button>
+              </div>
+            )}
+            {subtasks.length === 0 && !showSubtaskForm ? (
+              <div style={{ fontSize: 11, color: "#333", padding: 8 }}>No sub-tasks</div>
+            ) : (
+              subtasks.map((st) => {
+                const stCol = columns.find((c) => c.key === st.column);
+                return (
+                  <div key={st.id} style={{ fontSize: 12, color: "#999", marginBottom: 4, padding: "6px 8px", background: "#0f0f0f", borderRadius: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: stCol?.color || "#555", display: "inline-block", flexShrink: 0 }} />
+                    <span style={{ flex: 1 }}>{st.title}</span>
+                    <span style={{ fontSize: 9, color: "#555" }}>{stCol?.label}</span>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           {task.comments.length > 0 && (
