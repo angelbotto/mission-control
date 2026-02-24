@@ -473,25 +473,11 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReje
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 10, color: "#444" }}>{formatRelativeTime(task.updatedAt)}</span>
-        {columnKey === "queue" && (
+        {(columnKey === "backlog" || columnKey === "queue") && (
           <button onClick={(e) => { e.stopPropagation(); onAssign(); }}
             style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 4, padding: "2px 8px", color: "#00c691", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
-            ▶️ Go
+            ⏩ Priorizar
           </button>
-        )}
-        {columnKey === "review" && (
-          <div style={{ display: "flex", gap: 4 }}>
-            <button onClick={(e) => { e.stopPropagation(); onApprove(); }}
-              style={{ background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 4, padding: "2px 8px", color: "#00c691", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
-              title="Approve">
-              ✅
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); onReject(); }}
-              style={{ background: "#2a1a1a", border: "1px solid #3a2a2a", borderRadius: 4, padding: "2px 8px", color: "#f59e0b", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}
-              title="Request Changes">
-              🔄
-            </button>
-          </div>
         )}
       </div>
       {(() => {
@@ -556,6 +542,7 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
   const [showAttForm, setShowAttForm] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [addingComment, setAddingComment] = useState(false);
+  const [reviewFeedback, setReviewFeedback] = useState("");
   const subtasks = allTasks.filter((t) => t.parentId === task.id);
 
   const addAttachment = async () => {
@@ -623,6 +610,17 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
         <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
           <h3 style={{ fontSize: 18, fontWeight: 600, color: "#ededed", margin: "0 0 12px 0" }}>{task.title}</h3>
           {task.agentKey && <div style={{ fontSize: 13, color: "#aaa", marginBottom: 16 }}>{task.agentKey}</div>}
+          {task.column === "working" && (() => {
+            const feedbackComment = [...task.comments].reverse().find(c => c.text.includes("Cambios solicitados"));
+            if (!feedbackComment) return null;
+            return (
+              <div style={{ marginBottom: 16, padding: 12, background: "#2a1a0a", border: "1px solid #5a3a1a", borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 600, marginBottom: 4 }}>⚠️ FEEDBACK DE REVISIÓN</div>
+                <Md compact>{feedbackComment.text}</Md>
+                <div style={{ fontSize: 10, color: "#666", marginTop: 4 }}>{feedbackComment.by} · {formatRelativeTime(feedbackComment.at)}</div>
+              </div>
+            );
+          })()}
           {task.description && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Descripción</div>
@@ -635,11 +633,47 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
             <div><div style={{ fontSize: 10, color: "#555", textTransform: "uppercase" }}>Fuente</div><div style={{ fontSize: 12, color: "#888" }}>{task.source}</div></div>
           </div>
 
-          {task.column === "queue" && (
+          {(task.column === "backlog" || task.column === "queue") && (
             <button onClick={() => onAssign(task.id)}
               style={{ width: "100%", background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 6, padding: "10px", color: "#00c691", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", marginBottom: 16 }}>
-              ▶️ Go — Asignar y Comenzar
+              ⏩ Priorizar — Asignar y Comenzar
             </button>
+          )}
+
+          {task.column === "review" && (
+            <div style={{ marginBottom: 20, padding: 16, background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>👀 Revisión</div>
+              <textarea
+                value={reviewFeedback}
+                onChange={(e) => setReviewFeedback(e.target.value)}
+                placeholder="Feedback / Comentario de revisión..."
+                rows={3}
+                style={{ width: "100%", background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 12px", color: "#e8e8e8", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", minHeight: 80, boxSizing: "border-box", marginBottom: 10 }}
+              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={async () => {
+                  if (reviewFeedback.trim()) {
+                    await fetch(`/api/mc-tasks/${task.id}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "✅ **Aprobado** — " + reviewFeedback, by: "Angel" }) });
+                  }
+                  await fetch(`/api/mc-tasks/${task.id}/review`, { method: "POST" });
+                  setReviewFeedback("");
+                  onClose();
+                  onRefresh();
+                }}
+                  style={{ flex: 1, background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 6, padding: "10px", color: "#00c691", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  ✅ Aprobar → Done
+                </button>
+                <button onClick={async () => {
+                  const fb = reviewFeedback.trim() || "Requiere cambios";
+                  await fetch(`/api/mc-tasks/${task.id}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "🔄 **Cambios solicitados** — " + fb, by: "Angel" }) });
+                  await onMove(task.id, "working");
+                  setReviewFeedback("");
+                }}
+                  style={{ flex: 1, background: "#2a1a0a", border: "1px solid #5a3a1a", borderRadius: 6, padding: "10px", color: "#f59e0b", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  🔄 Pedir cambios
+                </button>
+              </div>
+            </div>
           )}
 
           <div style={{ marginBottom: 20 }}>
