@@ -1057,6 +1057,7 @@ function NewTaskModal({ agents, tasks, onSubmit, onClose }: {
   const [taskType, setTaskType] = useState<"request" | "improvement" | "bug" | "idea">("request");
   const [enhancing, setEnhancing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [descTab, setDescTab] = useState<"write" | "preview">("write");
 
   const enhance = async () => {
     if (!desc.trim()) return;
@@ -1072,7 +1073,7 @@ function NewTaskModal({ agents, tasks, onSubmit, onClose }: {
       });
       if (res.ok) {
         const { enhanced } = await res.json();
-        if (enhanced) setDesc(enhanced);
+        if (enhanced) { setDesc(enhanced); setDescTab("preview"); }
       }
     } finally {
       setEnhancing(false);
@@ -1095,67 +1096,124 @@ function NewTaskModal({ agents, tasks, onSubmit, onClose }: {
     setSaving(false);
   };
 
-  const inputStyle: React.CSSProperties = { width: "100%", background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 12px", color: "#e8e8e8", fontSize: 13, fontFamily: "inherit", outline: "none" };
+  const inputStyle: React.CSSProperties = { width: "100%", background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 12px", color: "#e8e8e8", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
+  const tabBtn = (key: "write" | "preview") => ({
+    background: descTab === key ? "#1a1a1a" : "transparent",
+    border: "none",
+    borderBottom: descTab === key ? "2px solid #00c691" : "2px solid transparent",
+    color: descTab === key ? "#e8e8e8" : "#666",
+    fontSize: 12, fontWeight: descTab === key ? 600 : 400,
+    padding: "4px 14px", cursor: "pointer", fontFamily: "inherit",
+    transition: "all 120ms ease",
+  } as React.CSSProperties);
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div onClick={(e) => e.stopPropagation()} style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: 10, padding: 24, width: 420, maxWidth: "90vw" }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, color: "#ededed", margin: "0 0 20px 0" }}>Nueva Tarea</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div onClick={(e) => e.stopPropagation()} style={{
+          background: "#111", border: "1px solid #2a2a2a", borderRadius: 12,
+          padding: 28, width: 700, maxWidth: "96vw", maxHeight: "92vh",
+          display: "flex", flexDirection: "column", gap: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: "#ededed", margin: 0 }}>✏️ Nueva Tarea</h3>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", fontSize: 18, cursor: "pointer" }}>✕</button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, overflowY: "auto", flex: 1 }}>
+            {/* Title */}
             <div>
-              <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Título</label>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nombre de la tarea" autoFocus style={inputStyle}
+              <label style={{ fontSize: 11, color: "#888", marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Título</label>
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="¿Qué hay que hacer?" autoFocus style={{ ...inputStyle, fontSize: 15, fontWeight: 500, padding: "10px 14px" }}
                 onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) submit(); }} />
             </div>
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <label style={{ fontSize: 11, color: "#888" }}>Descripción</label>
-                <button onClick={enhance} disabled={enhancing || !desc.trim()}
-                  style={{
-                    background: enhancing ? "rgba(124,138,255,0.1)" : "none",
-                    border: `1px solid ${enhancing ? "#7c8aff" : "#2a2a3a"}`,
-                    borderRadius: 4, padding: "3px 10px",
-                    color: enhancing ? "#7c8aff" : desc.trim() ? "#7c8aff" : "#555",
-                    fontSize: 11, cursor: enhancing ? "default" : "pointer", fontFamily: "inherit",
-                    transition: "all 0.3s ease",
-                    animation: enhancing ? "pulse 1.5s ease-in-out infinite" : "none",
-                  }}>
-                  {enhancing ? "✨ Mejorando con IA..." : "✨ Mejorar con IA"}
-                </button>
+
+            {/* Description with tabs */}
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 0, borderBottom: "1px solid #1f1f1f" }}>
+                <div style={{ display: "flex" }}>
+                  <button style={tabBtn("write")} onClick={() => setDescTab("write")}>✍️ Escribir</button>
+                  <button style={tabBtn("preview")} onClick={() => setDescTab("preview")} disabled={!desc.trim()}>👁 Preview</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 4 }}>
+                  <span style={{ fontSize: 10, color: "#444" }}>{desc.length} chars</span>
+                  <button onClick={enhance} disabled={enhancing || !desc.trim()}
+                    style={{
+                      background: enhancing ? "rgba(124,138,255,0.12)" : "none",
+                      border: `1px solid ${enhancing ? "#7c8aff" : desc.trim() ? "#2a2a4a" : "#1f1f1f"}`,
+                      borderRadius: 5, padding: "3px 11px",
+                      color: enhancing ? "#7c8aff" : desc.trim() ? "#7c8aff" : "#444",
+                      fontSize: 11, cursor: enhancing || !desc.trim() ? "default" : "pointer",
+                      fontFamily: "inherit", transition: "all 0.2s ease",
+                    }}>
+                    {enhancing ? "✨ Mejorando..." : "✨ Mejorar con IA"}
+                  </button>
+                </div>
               </div>
-              {enhancing && (
-                <div style={{ fontSize: 11, color: "#7c8aff", marginBottom: 6, fontStyle: "italic", animation: "pulse 1.5s ease-in-out infinite" }}>
-                  Estamos mejorando con IA la tarea...
+
+              {descTab === "write" ? (
+                <textarea
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  placeholder={"Descripción en Markdown…\n\n# Título\n- Lista\n**negrita**, _cursiva_, `código`\n\n```js\nconsole.log('hello')\n```"}
+                  disabled={enhancing}
+                  style={{
+                    ...inputStyle, resize: "vertical", minHeight: 240, lineHeight: 1.6,
+                    fontSize: 13, fontFamily: "monospace",
+                    opacity: enhancing ? 0.5 : 1, transition: "opacity 0.3s ease",
+                    borderTop: "none", borderTopLeftRadius: 0, borderTopRightRadius: 0,
+                  }}
+                />
+              ) : (
+                <div style={{
+                  background: "#0a0a0a", border: "1px solid #2a2a2a", borderTop: "none",
+                  borderBottomLeftRadius: 6, borderBottomRightRadius: 6,
+                  padding: "12px 16px", minHeight: 240, overflowY: "auto",
+                }}>
+                  {desc.trim() ? <Md>{desc}</Md> : <span style={{ color: "#333", fontSize: 13 }}>Nada que previsualizar aún…</span>}
                 </div>
               )}
-              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Detalles de la tarea…" rows={5}
-                disabled={enhancing}
-                style={{ ...inputStyle, resize: "vertical", minHeight: 120, opacity: enhancing ? 0.5 : 1, transition: "opacity 0.3s ease" }} />
+
+              {enhancing && (
+                <div style={{ fontSize: 11, color: "#7c8aff", marginTop: 6, fontStyle: "italic" }}>
+                  ✨ Mejorando descripción con IA…
+                </div>
+              )}
             </div>
-            <div>
-              <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Agente</label>
-              <select value={agent} onChange={(e) => setAgent(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
-                <option value="">Sin asignar</option>
-                {agents.map((a) => <option key={a.key} value={a.key}>{a.emoji} {a.key} — {a.role}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Tipo</label>
-              <select value={taskType} onChange={(e) => setTaskType(e.target.value as "request" | "improvement" | "bug" | "idea")} style={{ ...inputStyle, cursor: "pointer" }}>
-                <option value="request">📩 Nueva solicitud</option>
-                <option value="improvement">✨ Mejora</option>
-                <option value="bug">🐛 Bug</option>
-                <option value="idea">💡 Idea</option>
-              </select>
+
+            {/* Agent + Type row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Agente</label>
+                <select value={agent} onChange={(e) => setAgent(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
+                  <option value="">Sin asignar</option>
+                  {agents.map((a) => <option key={a.key} value={a.key}>{a.emoji} {a.key} — {a.role}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: "#888", marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: "0.06em" }}>Tipo</label>
+                <select value={taskType} onChange={(e) => setTaskType(e.target.value as "request" | "improvement" | "bug" | "idea")} style={{ ...inputStyle, cursor: "pointer" }}>
+                  <option value="request">📩 Nueva solicitud</option>
+                  <option value="improvement">✨ Mejora</option>
+                  <option value="bug">🐛 Bug</option>
+                  <option value="idea">💡 Idea</option>
+                </select>
+              </div>
             </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
-            <button onClick={onClose} style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 6, padding: "7px 16px", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
-            <button onClick={submit} disabled={!title.trim() || saving}
-              style={{ background: title.trim() ? "#00c691" : "#1a3a2a", color: title.trim() ? "#0a0a0a" : "#555", border: "none", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: title.trim() ? "pointer" : "default", fontFamily: "inherit" }}>
-              {saving ? "Creando..." : "Crear"}
-            </button>
+
+          {/* Footer */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 22, paddingTop: 18, borderTop: "1px solid #1a1a1a" }}>
+            <span style={{ fontSize: 11, color: "#444" }}>
+              {desc.trim() ? `📝 ${desc.trim().split(/\s+/).length} palabras` : "Sin descripción"}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={onClose} style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 18px", color: "#888", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+              <button onClick={submit} disabled={!title.trim() || saving}
+                style={{ background: title.trim() ? "#00c691" : "#1a3a2a", color: title.trim() ? "#0a0a0a" : "#555", border: "none", borderRadius: 6, padding: "8px 22px", fontSize: 13, fontWeight: 700, cursor: title.trim() ? "pointer" : "default", fontFamily: "inherit" }}>
+                {saving ? "Creando…" : "✅ Crear tarea"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
