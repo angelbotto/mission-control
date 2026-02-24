@@ -192,14 +192,14 @@ export default function KanbanPage() {
   const handleDrop = (column: ColumnKey) => {
     if (draggedTaskId) {
       const task = tasks.find((t) => t.id === draggedTaskId);
-      const angelMoves: Record<ColumnKey, ColumnKey[]> = {
+      const dragMoves: Record<ColumnKey, ColumnKey[]> = {
         backlog: ["queue"],
-        queue: ["working", "backlog"],
-        working: ["review", "backlog"],
-        review: ["done", "working", "backlog"],
-        done: ["backlog"],
+        queue: ["backlog"],
+        working: [],
+        review: ["done", "working"],
+        done: [],
       };
-      if (task && task.column !== column && angelMoves[task.column]?.includes(column)) {
+      if (task && task.column !== column && dragMoves[task.column]?.includes(column)) {
         moveTask(draggedTaskId, column);
       }
     }
@@ -551,10 +551,10 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
               {(() => {
                 const angelMoves: Record<ColumnKey, ColumnKey[]> = {
                   backlog: ["queue"],
-                  queue: ["working", "backlog"],
-                  working: ["review", "backlog"],
-                  review: ["done", "working", "backlog"],
-                  done: ["backlog"],
+                  queue: ["backlog"],
+                  working: [],
+                  review: ["done", "working"],
+                  done: [],
                 };
                 const allowed = angelMoves[task.column] || [];
                 return columns.filter((c) => allowed.includes(c.key)).map((c) => (
@@ -747,11 +747,26 @@ function NewTaskModal({ agents, onSubmit, onClose }: {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                 <label style={{ fontSize: 11, color: "#888" }}>Descripción</label>
                 <button onClick={enhance} disabled={enhancing || !desc.trim()}
-                  style={{ background: "none", border: "1px solid #2a2a3a", borderRadius: 4, padding: "2px 8px", color: enhancing ? "#555" : "#7c8aff", fontSize: 11, cursor: enhancing ? "default" : "pointer", fontFamily: "inherit" }}>
-                  {enhancing ? "⏳ Mejorando..." : "✨ Mejorar"}
+                  style={{
+                    background: enhancing ? "rgba(124,138,255,0.1)" : "none",
+                    border: `1px solid ${enhancing ? "#7c8aff" : "#2a2a3a"}`,
+                    borderRadius: 4, padding: "3px 10px",
+                    color: enhancing ? "#7c8aff" : desc.trim() ? "#7c8aff" : "#555",
+                    fontSize: 11, cursor: enhancing ? "default" : "pointer", fontFamily: "inherit",
+                    transition: "all 0.3s ease",
+                    animation: enhancing ? "pulse 1.5s ease-in-out infinite" : "none",
+                  }}>
+                  {enhancing ? "✨ Mejorando con IA..." : "✨ Mejorar con IA"}
                 </button>
               </div>
-              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Detalles de la tarea…" rows={3} style={{ ...inputStyle, resize: "vertical", minHeight: 60 }} />
+              {enhancing && (
+                <div style={{ fontSize: 11, color: "#7c8aff", marginBottom: 6, fontStyle: "italic", animation: "pulse 1.5s ease-in-out infinite" }}>
+                  Estamos mejorando con IA la tarea...
+                </div>
+              )}
+              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Detalles de la tarea…" rows={5}
+                disabled={enhancing}
+                style={{ ...inputStyle, resize: "vertical", minHeight: 120, opacity: enhancing ? 0.5 : 1, transition: "opacity 0.3s ease" }} />
             </div>
             <div>
               <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Agente</label>
