@@ -31,6 +31,12 @@ export default function AgentCreatorModal({ onClose, onCreated }: Props) {
   const [generatingSoul, setGeneratingSoul] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reportsTo, setReportsTo] = useState("main");
+  const [existingAgents, setExistingAgents] = useState<{key: string; emoji: string}[]>([]);
+
+  useEffect(() => {
+    fetch("/api/agents").then((r) => r.ok ? r.json() : []).then((agents: {key: string; emoji: string}[]) => setExistingAgents(agents)).catch(() => {});
+  }, []);
 
   const selectedRole = ROLE_OPTIONS.find((r) => r.value === role) || ROLE_OPTIONS[7];
   const id = slugify(name);
@@ -81,7 +87,8 @@ export default function AgentCreatorModal({ onClose, onCreated }: Props) {
           role: selectedRole.label,
           model,
           botToken,
-          manager: "K",
+          manager: reportsTo || "K",
+          reportsTo,
           soul: soul || `# ${name}\n\n${description}`,
         }),
       });
@@ -129,6 +136,17 @@ export default function AgentCreatorModal({ onClose, onCreated }: Props) {
           <div>
             <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Bot Token de Telegram (opcional)</label>
             <input type="password" placeholder="123456:ABC..." value={botToken} onChange={(e) => setBotToken(e.target.value)} style={inputStyle} />
+          </div>
+
+          {/* Reports to */}
+          <div>
+            <label style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "block" }}>Reporta a</label>
+            <select value={reportsTo} onChange={(e) => setReportsTo(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
+              <option value="main">K/main (principal)</option>
+              {existingAgents.map((a) => (
+                <option key={a.key} value={a.key}>{a.emoji} {a.key}</option>
+              ))}
+            </select>
           </div>
 
           {/* SOUL */}

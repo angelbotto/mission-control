@@ -3,8 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
 export async function POST(req: NextRequest) {
-  const { text } = await req.json();
+  const { text, context } = await req.json();
   if (!text || !OPENAI_KEY) return NextResponse.json({ enhanced: text });
+
+  const basePrompt = "Eres un experto en escribir instrucciones claras para agentes de IA. Toma la descripción del usuario y mejórala: hazla más específica, con criterios de aceptación claros, y formato accionable. Responde SOLO con el texto mejorado, en español.";
+  const systemContent = context
+    ? `Contexto del proyecto actual:\n${context}\n\n${basePrompt}`
+    : basePrompt;
 
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -18,8 +23,7 @@ export async function POST(req: NextRequest) {
         messages: [
           {
             role: "system",
-            content:
-              "Eres un experto en escribir instrucciones claras para agentes de IA. Toma la descripción del usuario y mejórala: hazla más específica, con criterios de aceptación claros, y formato accionable. Responde SOLO con el texto mejorado, en español.",
+            content: systemContent,
           },
           { role: "user", content: text },
         ],

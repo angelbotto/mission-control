@@ -19,6 +19,7 @@ export interface McTask {
   parentId?: string;
   taskType?: "request" | "improvement" | "bug" | "idea";
   attachments?: Array<{ name: string; url: string; addedBy: string; addedAt: string }>;
+  progress?: number;
 }
 
 interface TaskStore {

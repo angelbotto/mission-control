@@ -75,6 +75,7 @@ interface Task {
   parentId?: string;
   taskType?: "request" | "improvement" | "bug" | "idea";
   attachments?: Array<{ name: string; url: string; addedBy: string; addedAt: string }>;
+  progress?: number;
 }
 
 interface AgentOption {
@@ -398,7 +399,7 @@ export default function KanbanPage() {
       )}
 
       {showModal && (
-        <NewTaskModal agents={agents} onSubmit={async (data) => {
+        <NewTaskModal agents={agents} tasks={tasks} onSubmit={async (data) => {
           await fetch("/api/mc-tasks", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -513,6 +514,16 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onDragStart, onDr
           </button>
         )}
       </div>
+      {columnKey === "working" && task.progress != null && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+            <span style={{ fontSize: 9, color: "#00c691", fontWeight: 600 }}>{task.progress}%</span>
+          </div>
+          <div style={{ height: 3, background: "#1f1f1f", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${task.progress}%`, background: "#00c691", borderRadius: 2, transition: "width 300ms ease" }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -567,7 +578,20 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
   const [commentText, setCommentText] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [updatingProgress, setUpdatingProgress] = useState(false);
+  const [enhancingReview, setEnhancingReview] = useState(false);
   const subtasks = allTasks.filter((t) => t.parentId === task.id);
+
+  const updateProgress = async (value: number) => {
+    setUpdatingProgress(true);
+    await fetch(`/api/mc-tasks/${task.id}/progress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ progress: Math.min(100, Math.max(0, value)) }),
+    });
+    setUpdatingProgress(false);
+    onRefresh();
+  };
 
   const addAttachment = async () => {
     if (!attName.trim() || !attUrl.trim()) return;
@@ -633,7 +657,34 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 20 }}>
           <h3 style={{ fontSize: 18, fontWeight: 600, color: "#ededed", margin: "0 0 12px 0" }}>{task.title}</h3>
-          {task.agentKey && <div style={{ fontSize: 13, color: "#aaa", marginBottom: 16 }}>{task.agentKey}</div>}
+          {task.agentKey && <div style={{ fontSize: 13, color: "#aaa", marginBottom: 16 }}>{AGENT_EMOJI_MAP[task.agentKey] || ""} {task.agentKey}</div>}
+          {task.column === "review" && (
+            <div style={{ marginBottom: 16, padding: 14, background: "#0f1a0f", border: "1px solid #2a3a2a", borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#00c691", marginBottom: 8 }}>📊 Resumen Ejecutivo</div>
+              {task.agentKey && (
+                <div style={{ fontSize: 12, color: "#aaa", marginBottom: 8 }}>
+                  Agente: {AGENT_EMOJI_MAP[task.agentKey] || "🤖"} <strong style={{ color: "#ededed" }}>{task.agentKey}</strong>
+                </div>
+              )}
+              {task.comments.length > 0 ? (
+                <div style={{ fontSize: 12, color: "#bbb" }}>
+                  <Md compact>{task.comments[task.comments.length - 1].text}</Md>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "#555", fontStyle: "italic" }}>Sin resumen disponible</div>
+              )}
+              {task.attachments && task.attachments.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #2a3a2a" }}>
+                  {task.attachments.map((att, i) => (
+                    <a key={i} href={att.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: "inline-block", fontSize: 11, color: "#00c691", marginRight: 10, textDecoration: "none" }}>
+                      📎 {att.name}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {task.column === "working" && (() => {
             const feedbackComment = [...task.comments].reverse().find(c => c.text.includes("Cambios solicitados"));
             if (!feedbackComment) return null;
@@ -645,6 +696,31 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
               </div>
             );
           })()}
+          {task.column === "working" && (
+            <div style={{ marginBottom: 16, padding: 12, background: "#0f0f1a", border: "1px solid #1a2a3a", borderRadius: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: "#38bdf8", fontWeight: 600 }}>Progreso</div>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#00c691" }}>{task.progress ?? 0}%</span>
+              </div>
+              <div style={{ height: 6, background: "#1f1f1f", borderRadius: 3, overflow: "hidden", marginBottom: 10 }}>
+                <div style={{ height: "100%", width: `${task.progress ?? 0}%`, background: "#00c691", borderRadius: 3, transition: "width 300ms ease" }} />
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => updateProgress((task.progress ?? 0) + 10)} disabled={updatingProgress}
+                  style={{ flex: 1, background: "#1a2a1a", border: "1px solid #2a3a2a", borderRadius: 4, padding: "5px 0", color: "#00c691", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  +10%
+                </button>
+                <button onClick={() => updateProgress((task.progress ?? 0) + 25)} disabled={updatingProgress}
+                  style={{ flex: 1, background: "#1a2a1a", border: "1px solid #2a3a2a", borderRadius: 4, padding: "5px 0", color: "#00c691", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  +25%
+                </button>
+                <button onClick={() => updateProgress(100)} disabled={updatingProgress}
+                  style={{ flex: 1, background: "#1a3a2a", border: "1px solid #2a5a3a", borderRadius: 4, padding: "5px 0", color: "#00c691", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  100%
+                </button>
+              </div>
+            </div>
+          )}
           {task.description && (
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Descripción</div>
@@ -666,13 +742,30 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
 
           {task.column === "review" && (
             <div style={{ marginBottom: 20, padding: 16, background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 8 }}>
-              <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>👀 Revisión</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>👀 Revisión</div>
+                <button onClick={async () => {
+                  if (!reviewFeedback.trim()) return;
+                  setEnhancingReview(true);
+                  try {
+                    const context = allTasks.slice(0, 20).map(t =>
+                      `[${t.column}] ${t.title} (${t.agentKey || "sin asignar"})${t.description ? ": " + t.description.slice(0, 100) : ""}`
+                    ).join("\n");
+                    const res = await fetch("/api/enhance-prompt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: reviewFeedback, context }) });
+                    if (res.ok) { const { enhanced } = await res.json(); if (enhanced) setReviewFeedback(enhanced); }
+                  } finally { setEnhancingReview(false); }
+                }} disabled={enhancingReview || !reviewFeedback.trim()}
+                  style={{ background: "none", border: `1px solid ${enhancingReview ? "#7c8aff" : "#2a2a3a"}`, borderRadius: 4, padding: "2px 8px", color: enhancingReview ? "#7c8aff" : reviewFeedback.trim() ? "#7c8aff" : "#555", fontSize: 10, cursor: enhancingReview ? "default" : "pointer", fontFamily: "inherit" }}>
+                  {enhancingReview ? "✨ Mejorando..." : "✨ Mejorar"}
+                </button>
+              </div>
               <textarea
                 value={reviewFeedback}
                 onChange={(e) => setReviewFeedback(e.target.value)}
                 placeholder="Feedback / Comentario de revisión..."
                 rows={3}
-                style={{ width: "100%", background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 12px", color: "#e8e8e8", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", minHeight: 80, boxSizing: "border-box", marginBottom: 10 }}
+                disabled={enhancingReview}
+                style={{ width: "100%", background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 6, padding: "8px 12px", color: "#e8e8e8", fontSize: 13, fontFamily: "inherit", outline: "none", resize: "vertical", minHeight: 80, boxSizing: "border-box", marginBottom: 10, opacity: enhancingReview ? 0.5 : 1 }}
               />
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={async () => {
@@ -799,7 +892,7 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", marginBottom: 8 }}>Comentarios</div>
+            <div style={{ fontSize: 12, color: "#888", fontWeight: 600, marginBottom: 8 }}>💬 Comentarios</div>
             {task.comments.length === 0 && (
               <div style={{ fontSize: 11, color: "#333", padding: 8 }}>Sin comentarios</div>
             )}
@@ -883,8 +976,9 @@ function ActivityPanel({ events, onClose, onSelectTask }: {
   );
 }
 
-function NewTaskModal({ agents, onSubmit, onClose }: {
+function NewTaskModal({ agents, tasks, onSubmit, onClose }: {
   agents: AgentOption[];
+  tasks: Task[];
   onSubmit: (data: Record<string, string>) => Promise<void>;
   onClose: () => void;
 }) {
@@ -899,10 +993,13 @@ function NewTaskModal({ agents, onSubmit, onClose }: {
     if (!desc.trim()) return;
     setEnhancing(true);
     try {
+      const context = tasks.slice(0, 20).map(t =>
+        `[${t.column}] ${t.title} (${t.agentKey || "sin asignar"})${t.description ? ": " + t.description.slice(0, 100) : ""}`
+      ).join("\n");
       const res = await fetch("/api/enhance-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: desc }),
+        body: JSON.stringify({ text: desc, context }),
       });
       if (res.ok) {
         const { enhanced } = await res.json();
