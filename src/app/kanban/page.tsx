@@ -43,6 +43,43 @@ const COLUMNS: ColumnDef[] = [
   { key: "done", label: "Done", icon: "✅", color: "#00c691" },
 ];
 
+type DateFilter = "today" | "week" | "month" | "all";
+
+const DATE_FILTERS: { key: DateFilter; label: string }[] = [
+  { key: "today", label: "Hoy" },
+  { key: "week", label: "Esta semana" },
+  { key: "month", label: "Este mes" },
+  { key: "all", label: "Todo" },
+];
+
+function getStoredFilter(): DateFilter {
+  if (typeof window === "undefined") return "today";
+  return (localStorage.getItem("mc-kanban-filter") as DateFilter) || "today";
+}
+
+function passesDateFilter(task: Task, filter: DateFilter): boolean {
+  if (filter === "all") return true;
+  if (task.column === "working") return true;
+
+  const now = new Date();
+  const created = new Date(task.createdAt);
+  const updated = new Date(task.updatedAt);
+
+  if (filter === "today") {
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return created >= startOfDay || updated >= startOfDay;
+  }
+  if (filter === "week") {
+    const day = now.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff);
+    return created >= startOfWeek || updated >= startOfWeek;
+  }
+  // month
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  return created >= startOfMonth || updated >= startOfMonth;
+}
+
 export default function KanbanPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
@@ -51,6 +88,18 @@ export default function KanbanPage() {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<ColumnKey | null>(null);
   const [rejectTaskId, setRejectTaskId] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
+
+  useEffect(() => {
+    setDateFilter(getStoredFilter());
+  }, []);
+
+  const handleFilterChange = (f: DateFilter) => {
+    setDateFilter(f);
+    localStorage.setItem("mc-kanban-filter", f);
+  };
+
+  const filteredTasks = tasks.filter((t) => passesDateFilter(t, dateFilter));
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -123,9 +172,26 @@ export default function KanbanPage() {
   return (
     <Shell>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 600, color: "#555", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }}>
-          Task Board
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <h2 style={{ fontSize: 13, fontWeight: 600, color: "#555", textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }}>
+            Task Board
+          </h2>
+          <div style={{ display: "flex", gap: 4, background: "#0a0a0a", borderRadius: 8, padding: 3, border: "1px solid #1a1a1a" }}>
+            {DATE_FILTERS.map((f) => (
+              <button key={f.key} onClick={() => handleFilterChange(f.key)}
+                style={{
+                  background: dateFilter === f.key ? "#00c691" : "transparent",
+                  color: dateFilter === f.key ? "#0a0a0a" : "#666",
+                  border: "none", borderRadius: 6, padding: "4px 12px",
+                  fontSize: 12, fontWeight: dateFilter === f.key ? 600 : 400,
+                  cursor: "pointer", fontFamily: "inherit",
+                  transition: "all 150ms ease",
+                }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setShowModal(true)} style={{ background: "#00c691", color: "#0a0a0a", border: "none", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
             + Nueva Tarea
@@ -135,7 +201,7 @@ export default function KanbanPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, alignItems: "start" }}>
         {COLUMNS.map((col) => {
-          const colTasks = tasks.filter((t) => t.column === col.key);
+          const colTasks = filteredTasks.filter((t) => t.column === col.key);
           const isDragOver = dragOverColumn === col.key && draggedTaskId !== null;
           return (
             <div key={col.key}
