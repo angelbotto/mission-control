@@ -17,6 +17,7 @@ interface Task {
   comments: Array<{ text: string; by: string; at: string }>;
   source: string;
   parentId?: string;
+  attachments?: Array<{ name: string; url: string; addedBy: string; addedAt: string }>;
 }
 
 interface AgentOption {
@@ -43,21 +44,31 @@ const COLUMNS: ColumnDef[] = [
   { key: "done", label: "Done", icon: "✅", color: "#00c691" },
 ];
 
-type DateFilter = "today" | "week" | "month" | "all";
+type DateFilter = "today" | "week" | "month" | "all" | "range";
 
 const DATE_FILTERS: { key: DateFilter; label: string }[] = [
   { key: "today", label: "Hoy" },
   { key: "week", label: "Esta semana" },
   { key: "month", label: "Este mes" },
   { key: "all", label: "Todo" },
+  { key: "range", label: "Rango" },
 ];
+
+const SOURCE_BADGES: Record<string, { bg: string; color: string; emoji: string; label: string }> = {
+  telegram: { bg: "#1a2a3a", color: "#38bdf8", emoji: "📱", label: "Telegram" },
+  kanban: { bg: "#1a1a1a", color: "#888", emoji: "📋", label: "Kanban" },
+  gsd: { bg: "#1a1a2a", color: "#7c8aff", emoji: "⚡", label: "GSD" },
+  cron: { bg: "#2a1a0a", color: "#f59e0b", emoji: "🕐", label: "Cron" },
+  chat: { bg: "#2a1a2a", color: "#a78bfa", emoji: "💬", label: "Chat" },
+  review: { bg: "#2a2a1a", color: "#fbbf24", emoji: "🔄", label: "Review" },
+};
 
 function getStoredFilter(): DateFilter {
   if (typeof window === "undefined") return "today";
   return (localStorage.getItem("mc-kanban-filter") as DateFilter) || "today";
 }
 
-function passesDateFilter(task: Task, filter: DateFilter): boolean {
+function passesDateFilter(task: Task, filter: DateFilter, rangeFrom?: string, rangeTo?: string): boolean {
   if (filter === "all") return true;
   if (task.column === "working") return true;
 
@@ -75,6 +86,12 @@ function passesDateFilter(task: Task, filter: DateFilter): boolean {
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff);
     return created >= startOfWeek || updated >= startOfWeek;
   }
+  if (filter === "range") {
+    if (!rangeFrom && !rangeTo) return true;
+    const from = rangeFrom ? new Date(rangeFrom) : new Date(0);
+    const to = rangeTo ? new Date(rangeTo + "T23:59:59.999") : new Date();
+    return (created >= from && created <= to) || (updated >= from && updated <= to);
+  }
   // month
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   return created >= startOfMonth || updated >= startOfMonth;
@@ -89,9 +106,14 @@ export default function KanbanPage() {
   const [dragOverColumn, setDragOverColumn] = useState<ColumnKey | null>(null);
   const [rejectTaskId, setRejectTaskId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DateFilter>("today");
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+
 
   useEffect(() => {
     setDateFilter(getStoredFilter());
+    setRangeFrom(localStorage.getItem("mc-kanban-range-from") || "");
+    setRangeTo(localStorage.getItem("mc-kanban-range-to") || "");
   }, []);
 
   const handleFilterChange = (f: DateFilter) => {
@@ -99,7 +121,14 @@ export default function KanbanPage() {
     localStorage.setItem("mc-kanban-filter", f);
   };
 
-  const filteredTasks = tasks.filter((t) => passesDateFilter(t, dateFilter));
+  const handleRangeChange = (from: string, to: string) => {
+    setRangeFrom(from);
+    setRangeTo(to);
+    localStorage.setItem("mc-kanban-range-from", from);
+    localStorage.setItem("mc-kanban-range-to", to);
+  };
+
+  const filteredTasks = tasks.filter((t) => passesDateFilter(t, dateFilter, rangeFrom, rangeTo));
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -191,6 +220,15 @@ export default function KanbanPage() {
               </button>
             ))}
           </div>
+          {dateFilter === "range" && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input type="date" value={rangeFrom} onChange={(e) => handleRangeChange(e.target.value, rangeTo)}
+                style={{ background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6, padding: "4px 8px", color: "#ccc", fontSize: 12, fontFamily: "inherit", outline: "none", colorScheme: "dark" }} />
+              <span style={{ color: "#555", fontSize: 11 }}>—</span>
+              <input type="date" value={rangeTo} onChange={(e) => handleRangeChange(rangeFrom, e.target.value)}
+                style={{ background: "#0a0a0a", border: "1px solid #1a1a1a", borderRadius: 6, padding: "4px 8px", color: "#ccc", fontSize: 12, fontFamily: "inherit", outline: "none", colorScheme: "dark" }} />
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => setShowModal(true)} style={{ background: "#00c691", color: "#0a0a0a", border: "none", borderRadius: 6, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
@@ -243,7 +281,22 @@ export default function KanbanPage() {
       </div>
 
       {selectedTask && (
-        <DetailPanel task={selectedTask} allTasks={tasks} columns={COLUMNS} onMove={moveTask} onDelete={deleteTask} onAssign={assignTask} onClose={() => setSelectedTask(null)} onRefresh={fetchTasks} />
+        <DetailPanel task={selectedTask} allTasks={tasks} columns={COLUMNS} onMove={moveTask} onDelete={deleteTask} onAssign={assignTask} onClose={() => setSelectedTask(null)} onRefresh={fetchTasks}
+          onCreateFromComment={async (comment) => {
+            await fetch("/api/mc-tasks", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: "Derivada: " + comment.text.slice(0, 50),
+                description: comment.text + "\n\n---\nDerivada del comentario de " + comment.by,
+                parentId: selectedTask.id,
+                column: "backlog",
+                source: "kanban",
+              }),
+            });
+            await fetchTasks();
+          }}
+        />
       )}
 
       {showModal && (
@@ -306,6 +359,11 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReje
       {task.description && (
         <p style={{ fontSize: 11, color: "#666", margin: "0 0 6px 0", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{task.description}</p>
       )}
+      {task.comments && task.comments.length > 0 && (
+        <p style={{ fontSize: 10, color: "#555", margin: "0 0 6px 0", lineHeight: 1.3, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          💬 {task.comments[task.comments.length - 1].text}
+        </p>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 10, color: "#444" }}>{formatRelativeTime(task.updatedAt)}</span>
         {columnKey === "queue" && (
@@ -329,11 +387,15 @@ function TaskCard({ task, color, columnKey, onClick, onAssign, onApprove, onReje
           </div>
         )}
       </div>
-      {task.source === "gsd" ? (
-        <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, color: "#7c8aff", background: "#1a1a2a", padding: "1px 6px", borderRadius: 3, border: "1px solid #2a2a3a" }}>📋 GSD</span>
-      ) : task.source !== "kanban" && (
-        <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, color: "#444", background: "#1a1a1a", padding: "1px 4px", borderRadius: 3 }}>{task.source}</span>
-      )}
+      {(() => {
+        const badge = SOURCE_BADGES[task.source];
+        if (!badge) return null;
+        return (
+          <span style={{ position: "absolute", top: 6, right: 8, fontSize: 9, color: badge.color, background: badge.bg, padding: "1px 6px", borderRadius: 3, border: `1px solid ${badge.color}33` }}>
+            {badge.emoji} {badge.label}
+          </span>
+        );
+      })()}
     </div>
   );
 }
@@ -373,14 +435,49 @@ function RejectModal({ onSubmit, onClose }: { onSubmit: (feedback: string) => Pr
   );
 }
 
-function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onClose, onRefresh }: {
+function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onClose, onRefresh, onCreateFromComment }: {
   task: Task; allTasks: Task[]; columns: ColumnDef[]; onMove: (id: string, col: ColumnKey) => void; onDelete: (id: string) => void; onAssign: (id: string) => void; onClose: () => void; onRefresh: () => void;
+  onCreateFromComment: (comment: { text: string; by: string; at: string }) => void;
 }) {
   const current = columns.find((c) => c.key === task.column)!;
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [creatingSub, setCreatingSub] = useState(false);
+  const [attName, setAttName] = useState("");
+  const [attUrl, setAttUrl] = useState("");
+  const [addingAtt, setAddingAtt] = useState(false);
+  const [showAttForm, setShowAttForm] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [addingComment, setAddingComment] = useState(false);
   const subtasks = allTasks.filter((t) => t.parentId === task.id);
+
+  const addAttachment = async () => {
+    if (!attName.trim() || !attUrl.trim()) return;
+    setAddingAtt(true);
+    await fetch(`/api/mc-tasks/${task.id}/attachments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: attName.trim(), url: attUrl.trim(), addedBy: "angel" }),
+    });
+    setAttName("");
+    setAttUrl("");
+    setShowAttForm(false);
+    setAddingAtt(false);
+    onRefresh();
+  };
+
+  const addComment = async () => {
+    if (!commentText.trim()) return;
+    setAddingComment(true);
+    await fetch(`/api/mc-tasks/${task.id}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: commentText.trim(), by: "Angel" }),
+    });
+    setCommentText("");
+    setAddingComment(false);
+    onRefresh();
+  };
 
   const createSubtask = async () => {
     if (!subtaskTitle.trim()) return;
@@ -488,17 +585,73 @@ function DetailPanel({ task, allTasks, columns, onMove, onDelete, onAssign, onCl
             )}
           </div>
 
-          {task.comments.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", marginBottom: 8 }}>Comentarios</div>
-              {task.comments.map((c, i) => (
-                <div key={i} style={{ fontSize: 12, color: "#999", marginBottom: 6, padding: "6px 8px", background: "#0f0f0f", borderRadius: 4 }}>
-                  <span style={{ color: "#666" }}>{c.by} · {formatRelativeTime(c.at)}</span>
-                  <p style={{ margin: "4px 0 0 0" }}>{c.text}</p>
-                </div>
-              ))}
+          {/* Attachments section */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>Attachments</div>
+              <button onClick={() => setShowAttForm(true)}
+                style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 4, padding: "2px 8px", color: "#888", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                ＋ Adjunto
+              </button>
             </div>
-          )}
+            {showAttForm && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8, padding: 8, background: "#0a0a0a", borderRadius: 6, border: "1px solid #1a1a1a" }}>
+                <input type="text" value={attName} onChange={(e) => setAttName(e.target.value)} placeholder="Nombre" autoFocus
+                  style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: 4, padding: "6px 8px", color: "#e8e8e8", fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                <input type="text" value={attUrl} onChange={(e) => setAttUrl(e.target.value)} placeholder="URL"
+                  onKeyDown={(e) => { if (e.key === "Enter") addAttachment(); if (e.key === "Escape") setShowAttForm(false); }}
+                  style={{ background: "#111", border: "1px solid #2a2a2a", borderRadius: 4, padding: "6px 8px", color: "#e8e8e8", fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button onClick={() => setShowAttForm(false)} style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 4, padding: "4px 10px", color: "#888", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+                  <button onClick={addAttachment} disabled={!attName.trim() || !attUrl.trim() || addingAtt}
+                    style={{ background: "#00c691", color: "#0a0a0a", border: "none", borderRadius: 4, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                    Agregar
+                  </button>
+                </div>
+              </div>
+            )}
+            {(!task.attachments || task.attachments.length === 0) && !showAttForm ? (
+              <div style={{ fontSize: 11, color: "#333", padding: 8 }}>Sin adjuntos</div>
+            ) : (
+              (task.attachments || []).map((att, i) => (
+                <div key={i} style={{ fontSize: 12, color: "#999", marginBottom: 4, padding: "6px 8px", background: "#0f0f0f", borderRadius: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 14 }}>📎</span>
+                  <a href={att.url} target="_blank" rel="noopener noreferrer" style={{ color: "#00c691", textDecoration: "none", flex: 1, fontSize: 12 }}>{att.name}</a>
+                  <span style={{ fontSize: 9, color: "#555" }}>{att.addedBy} · {formatRelativeTime(att.addedAt)}</span>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, color: "#555", fontWeight: 500, textTransform: "uppercase", marginBottom: 8 }}>Comentarios</div>
+            {task.comments.length === 0 && (
+              <div style={{ fontSize: 11, color: "#333", padding: 8 }}>Sin comentarios</div>
+            )}
+            {task.comments.map((c, i) => (
+              <div key={i} style={{ fontSize: 12, color: "#999", marginBottom: 6, padding: "6px 8px", background: "#0f0f0f", borderRadius: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ color: "#666" }}>{c.by} · {formatRelativeTime(c.at)}</span>
+                  <button onClick={() => onCreateFromComment(c)} title="Crear tarea desde esto"
+                    style={{ background: "none", border: "1px solid #2a2a2a", borderRadius: 3, padding: "1px 5px", color: "#888", fontSize: 12, cursor: "pointer", fontFamily: "inherit", lineHeight: 1 }}>
+                    📋
+                  </button>
+                </div>
+                <p style={{ margin: "4px 0 0 0" }}>{c.text}</p>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Escribe un comentario..."
+                onKeyDown={(e) => { if (e.key === "Enter") addComment(); }}
+                style={{ flex: 1, background: "#0a0a0a", border: "1px solid #2a2a2a", borderRadius: 4, padding: "6px 8px", color: "#e8e8e8", fontSize: 12, fontFamily: "inherit", outline: "none" }}
+              />
+              <button onClick={addComment} disabled={!commentText.trim() || addingComment}
+                style={{ background: commentText.trim() ? "#00c691" : "#1a3a2a", color: commentText.trim() ? "#0a0a0a" : "#555", border: "none", borderRadius: 4, padding: "6px 10px", fontSize: 11, fontWeight: 600, cursor: commentText.trim() ? "pointer" : "default", fontFamily: "inherit" }}>
+                Enviar
+              </button>
+            </div>
+          </div>
         </div>
         <div style={{ padding: "16px 20px", borderTop: "1px solid #1f1f1f" }}>
           <button onClick={() => onDelete(task.id)}

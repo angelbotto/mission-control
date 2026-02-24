@@ -23,8 +23,9 @@ export interface McTask {
   updatedAt: string;
   createdBy: string;
   comments: Array<{ text: string; by: string; at: string }>;
-  source: "kanban" | "chat" | "gsd" | "review";
+  source: string;
   parentId?: string;
+  attachments?: Array<{ name: string; url: string; addedBy: string; addedAt: string }>;
 }
 
 interface TaskStore {
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, description, agentId, agentKey, column, source, parentId } = body;
+    const { title, description, agentId, agentKey, column, source, parentId, attachments } = body;
 
     if (!title) {
       return NextResponse.json({ error: "title required" }, { status: 400 });
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
       comments: [],
       source: source || "kanban",
       ...(parentId ? { parentId } : {}),
+      ...(attachments ? { attachments } : {}),
     };
 
     const store = await loadTasks();
