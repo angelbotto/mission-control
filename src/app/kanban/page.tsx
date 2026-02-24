@@ -125,33 +125,40 @@ function getStoredFilter(): DateFilter {
   return (localStorage.getItem("mc-kanban-filter") as DateFilter) || "today";
 }
 
+function toCOT(date: Date): string {
+  return date.toLocaleDateString("en-CA", { timeZone: "America/Bogota" }); // YYYY-MM-DD
+}
+
 function passesDateFilter(task: Task, filter: DateFilter, rangeFrom?: string, rangeTo?: string): boolean {
   if (filter === "all") return true;
   if (task.column === "working") return true;
 
   const now = new Date();
-  const created = new Date(task.createdAt);
-  const updated = new Date(task.updatedAt);
+  const todayCOT = toCOT(now);
+  const createdCOT = toCOT(new Date(task.createdAt));
+  const updatedCOT = toCOT(new Date(task.updatedAt));
 
   if (filter === "today") {
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    return created >= startOfDay || updated >= startOfDay;
+    return createdCOT === todayCOT || updatedCOT === todayCOT;
   }
   if (filter === "week") {
-    const day = now.getDay();
+    const nowCOT = new Date(todayCOT + "T12:00:00");
+    const day = nowCOT.getDay();
     const diff = day === 0 ? 6 : day - 1;
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff);
-    return created >= startOfWeek || updated >= startOfWeek;
+    const startOfWeek = new Date(nowCOT);
+    startOfWeek.setDate(nowCOT.getDate() - diff);
+    const startStr = startOfWeek.toISOString().slice(0, 10);
+    return (createdCOT >= startStr && createdCOT <= todayCOT) || (updatedCOT >= startStr && updatedCOT <= todayCOT);
   }
   if (filter === "range") {
     if (!rangeFrom && !rangeTo) return true;
-    const from = rangeFrom ? new Date(rangeFrom) : new Date(0);
-    const to = rangeTo ? new Date(rangeTo + "T23:59:59.999") : new Date();
-    return (created >= from && created <= to) || (updated >= from && updated <= to);
+    const from = rangeFrom || "1970-01-01";
+    const to = rangeTo || "2099-12-31";
+    return (createdCOT >= from && createdCOT <= to) || (updatedCOT >= from && updatedCOT <= to);
   }
   // month
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  return created >= startOfMonth || updated >= startOfMonth;
+  const monthStart = todayCOT.slice(0, 7) + "-01";
+  return (createdCOT >= monthStart && createdCOT <= todayCOT) || (updatedCOT >= monthStart && updatedCOT <= todayCOT);
 }
 
 export default function KanbanPage() {
